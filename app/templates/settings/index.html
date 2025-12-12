@@ -1,0 +1,590 @@
+{% extends "base.html" %}
+
+{% block title %}Store Settings | Smart POS{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-0">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="mb-0">Store Settings</h4>
+  </div>
+
+  <div class="card border-0 shadow-sm">
+    <div class="card-header bg-white">
+      <h6 class="mb-0">Store Information</h6>
+    </div>
+    <div class="card-body">
+      <form method="post" action="{{ url_for('settings.index') }}" enctype="multipart/form-data">
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label">Shop Name <span class="text-danger">*</span></label>
+            <input type="text" name="shop_name" class="form-control" value="{{ settings.shop_name }}" required>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Phone</label>
+            <input type="text" name="phone" class="form-control" value="{{ settings.phone }}">
+          </div>
+          <div class="col-12">
+            <label class="form-label">Address</label>
+            <textarea name="address" class="form-control" rows="2">{{ settings.address }}</textarea>
+          </div>
+          <div class="col-12">
+            <label class="form-label">Receipt Header Message</label>
+            <textarea name="receipt_header" class="form-control" rows="3" placeholder="Optional message to appear at the top of receipts">{{ settings.receipt_header }}</textarea>
+            <small class="text-muted">This will appear at the top of printed receipts.</small>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Receipt Footer Message</label>
+            <input type="text" name="receipt_footer" class="form-control" value="{{ settings.receipt_footer }}" placeholder="Thank You!">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Currency Symbol</label>
+            <input type="text" name="currency_symbol" class="form-control" value="{{ settings.currency_symbol }}" placeholder="Ks">
+          </div>
+        </div>
+        
+        <!-- Printer Configuration Section -->
+        <hr class="my-4">
+        <h6 class="mb-3">
+          <i class="fa fa-print me-2"></i>Printer Configuration
+        </h6>
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label">Paper Size</label>
+            <select name="printer_paper_size" class="form-select">
+              <option value="58mm" {% if settings.printer_paper_size == '58mm' %}selected{% endif %}>58mm Thermal</option>
+              <option value="80mm" {% if settings.printer_paper_size == '80mm' %}selected{% endif %}>80mm Thermal</option>
+              <option value="A4" {% if settings.printer_paper_size == 'A4' %}selected{% endif %}>A4 Standard</option>
+            </select>
+            <small class="text-muted">Select the paper size for your thermal printer</small>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Left Padding (px)</label>
+            <input type="number" name="print_padding" class="form-control" 
+                   value="{{ settings.print_padding or 0 }}" min="0" max="50">
+            <small class="text-muted">Adjust this if text is cut off on the left (0-50px)</small>
+          </div>
+          <div class="col-md-6">
+            <div class="form-check form-switch">
+              <input class="form-check-input" type="checkbox" name="auto_print" id="autoPrint" 
+                     {% if settings.auto_print %}checked{% endif %}>
+              <label class="form-check-label" for="autoPrint">
+                Auto Print
+              </label>
+            </div>
+            <small class="text-muted d-block mt-1">Open print dialog automatically after checkout</small>
+          </div>
+          <div class="col-md-6">
+            <div class="form-check form-switch">
+              <input class="form-check-input" type="checkbox" name="show_logo_on_receipt" id="showLogo" 
+                     {% if settings.show_logo_on_receipt %}checked{% endif %}>
+              <label class="form-check-label" for="showLogo">
+                Show Logo on Receipt
+              </label>
+            </div>
+            <small class="text-muted d-block mt-1">Display shop logo/image on printed receipts</small>
+          </div>
+        </div>
+        
+        <div class="mt-4">
+          <button type="submit" class="btn btn-primary" data-loading-text="Updating Configuration...">
+            <i class="fa fa-save me-1"></i>Save Settings
+          </button>
+          <button type="button" class="btn btn-outline-info ms-2" id="testPrintBtn">
+            <i class="fa fa-print me-1"></i>Test Print
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Branding Card -->
+  <div class="card border-0 shadow-sm mt-4">
+    <div class="card-header bg-white">
+      <h6 class="mb-0">
+        <i class="fa fa-image me-2"></i>Branding
+      </h6>
+    </div>
+    <div class="card-body">
+      <form method="post" action="{{ url_for('settings.index') }}" enctype="multipart/form-data">
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label">Current Logo</label>
+            <div class="mb-3">
+              {% if settings.logo_filename %}
+                <img src="{{ url_for('static', filename='uploads/logo/' + settings.logo_filename) }}" 
+                     alt="Shop Logo" 
+                     class="img-thumbnail" 
+                     style="max-height: 100px; display: block;">
+                <small class="text-muted d-block mt-2">Current logo preview</small>
+              {% else %}
+                <div class="border rounded p-3 text-center text-muted" style="min-height: 100px; display: flex; align-items: center; justify-content: center;">
+                  <div>
+                    <i class="fa fa-image fa-2x mb-2"></i>
+                    <p class="mb-0">No logo uploaded</p>
+                  </div>
+                </div>
+              {% endif %}
+            </div>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Upload New Logo</label>
+            <input type="file" name="logo" class="form-control" accept="image/*" id="logoInput">
+            <small class="text-muted d-block mt-2">
+              <i class="fa fa-info-circle me-1"></i>
+              Best results with black & white images. Transparent PNG recommended for thermal printers.
+            </small>
+            
+            {% if settings.logo_filename %}
+            <div class="form-check mt-3">
+              <input class="form-check-input" type="checkbox" name="remove_logo" id="removeLogo">
+              <label class="form-check-label text-danger" for="removeLogo">
+                <i class="fa fa-trash me-1"></i>Remove Current Logo
+              </label>
+            </div>
+            {% endif %}
+          </div>
+        </div>
+        
+        <div class="mt-3">
+          <button type="submit" class="btn btn-primary" data-loading-text="Updating Logo...">
+            <i class="fa fa-upload me-1"></i>Update Logo
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Database Management -->
+  <div class="card border-info border-2 shadow-sm mt-4">
+    <div class="card-header bg-info text-white">
+      <h6 class="mb-0">
+        <i class="fa fa-database me-2"></i>Database Management
+      </h6>
+    </div>
+    <div class="card-body">
+      <div class="row g-3">
+        <!-- Backup Section -->
+        <div class="col-md-6">
+          <div class="border border-success rounded p-3 h-100">
+            <h6 class="text-success">
+              <i class="fa fa-download me-2"></i>Backup Database
+            </h6>
+            <p class="small text-muted mb-3">
+              Download a copy of your data to keep it safe. Store backups in a secure location.
+            </p>
+            <a href="{{ url_for('settings.download_backup') }}" class="btn btn-success btn-sm">
+              <i class="fa fa-download me-1"></i>⬇️ Download Backup
+            </a>
+          </div>
+        </div>
+        
+        <!-- Restore Section -->
+        <div class="col-md-6">
+          <div class="border border-warning rounded p-3 h-100">
+            <h6 class="text-warning">
+              <i class="fa fa-upload me-2"></i>Restore Database
+            </h6>
+            <p class="small text-muted mb-3">
+              Upload a backup file to restore your data. <strong class="text-danger">⚠️ This will replace ALL current data.</strong>
+            </p>
+            <form id="restoreForm" enctype="multipart/form-data">
+              <div class="mb-2">
+                <input type="file" id="restoreFile" class="form-control form-control-sm" 
+                       accept=".db,.sqlite,.sqlite3" required>
+                <small class="text-muted">Select a .db, .sqlite, or .sqlite3 file</small>
+              </div>
+              <button type="button" class="btn btn-warning btn-sm" id="restoreBtn">
+                <i class="fa fa-upload me-1"></i>Restore Now
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Danger Zone -->
+  <div class="card border-danger border-2 shadow-sm mt-4">
+    <div class="card-header bg-danger text-white">
+      <h6 class="mb-0">
+        <i class="fa fa-exclamation-triangle me-2"></i>Danger Zone
+      </h6>
+    </div>
+    <div class="card-body">
+      <p class="text-muted mb-4">These actions are irreversible. Use with extreme caution.</p>
+      
+      <div class="row g-3">
+        <div class="col-md-6">
+          <div class="border rounded p-3">
+            <h6 class="text-warning">
+              <i class="fa fa-history me-2"></i>Clear Sales & History
+            </h6>
+            <p class="small text-muted mb-3">
+              Keeps products, categories, and customers, but deletes all sales history, purchase history, and stock movements. 
+              Resets product stock to 0 and customer credit balances to 0.
+            </p>
+            <button type="button" class="btn btn-warning btn-sm" data-bs-toggle="modal" data-bs-target="#resetModal" 
+                    data-reset-type="transactions_only">
+              <i class="fa fa-trash me-1"></i>Clear Sales & History
+            </button>
+          </div>
+        </div>
+        <div class="col-md-6">
+          <div class="border rounded p-3">
+            <h6 class="text-danger">
+              <i class="fa fa-bomb me-2"></i>Factory Reset
+            </h6>
+            <p class="small text-muted mb-3">
+              <strong>WARNING:</strong> Deletes EVERYTHING including products, categories, suppliers, customers, and all transaction history. 
+              Only users and store settings will be preserved. This cannot be undone!
+            </p>
+            <button type="button" class="btn btn-danger btn-sm" data-bs-toggle="modal" data-bs-target="#resetModal" 
+                    data-reset-type="full_reset">
+              <i class="fa fa-exclamation-triangle me-1"></i>Factory Reset
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Reset Confirmation Modal -->
+<div class="modal fade" id="resetModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header bg-danger text-white">
+        <h5 class="modal-title">
+          <i class="fa fa-exclamation-triangle me-2"></i>Confirm Data Wipe
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="alert alert-danger" role="alert">
+          <strong>Warning:</strong> This action cannot be undone!
+        </div>
+        <p id="resetDescription" class="mb-3"></p>
+        <div class="mb-3">
+          <label class="form-label">Enter your password to confirm:</label>
+          <input type="password" id="confirmPassword" class="form-control" placeholder="Your password" autofocus>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-danger" id="confirmResetBtn">
+          <i class="fa fa-trash me-1"></i>Confirm Delete
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+  let currentResetType = '';
+  
+  // Set reset type when modal opens
+  document.getElementById('resetModal').addEventListener('show.bs.modal', function(event) {
+    const button = event.relatedTarget;
+    currentResetType = button.getAttribute('data-reset-type');
+    
+    // Update description based on reset type
+    const descriptionEl = document.getElementById('resetDescription');
+    if (currentResetType === 'transactions_only') {
+      descriptionEl.textContent = 'This will delete all sales, purchases, and stock movement history. Product stock and customer credit balances will be reset to 0. Products, categories, and customers will be preserved.';
+    } else if (currentResetType === 'full_reset') {
+      descriptionEl.textContent = 'This will delete EVERYTHING: all products, categories, suppliers, customers, and all transaction history. Only users and store settings will be preserved.';
+    }
+    
+    // Clear password field
+    document.getElementById('confirmPassword').value = '';
+  });
+  
+  // Handle reset confirmation
+  document.getElementById('confirmResetBtn').addEventListener('click', function() {
+    const password = document.getElementById('confirmPassword').value;
+    
+    if (!password) {
+      alert('Please enter your password');
+      return;
+    }
+    
+    // Disable button during request
+    this.disabled = true;
+    this.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Processing...';
+    
+    // Send AJAX request
+    fetch('{{ url_for("settings.reset_data") }}', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        password: password,
+        reset_type: currentResetType
+      })
+    })
+    .then(response => response.json())
+    .then(data => {
+      if (data.error) {
+        if (data.error === 'Incorrect password') {
+          alert('❌ Incorrect Password. Please try again.');
+        } else {
+          alert('❌ Error: ' + data.error);
+        }
+        // Re-enable button
+        document.getElementById('confirmResetBtn').disabled = false;
+        document.getElementById('confirmResetBtn').innerHTML = '<i class="fa fa-trash me-1"></i>Confirm Delete';
+      } else {
+        // Success
+        alert('✅ ' + data.message);
+        // Close modal
+        const modal = bootstrap.Modal.getInstance(document.getElementById('resetModal'));
+        modal.hide();
+        // Reload page
+        window.location.reload();
+      }
+    })
+    .catch(error => {
+      console.error('Error:', error);
+      alert('❌ An error occurred. Please try again.');
+      // Re-enable button
+      document.getElementById('confirmResetBtn').disabled = false;
+      document.getElementById('confirmResetBtn').innerHTML = '<i class="fa fa-trash me-1"></i>Confirm Delete';
+    });
+  });
+  
+  // Allow Enter key to submit
+  document.getElementById('confirmPassword').addEventListener('keypress', function(e) {
+    if (e.key === 'Enter') {
+      document.getElementById('confirmResetBtn').click();
+    }
+  });
+  
+  // Test Print functionality
+  document.getElementById('testPrintBtn').addEventListener('click', function() {
+    const paperSize = '{{ settings.printer_paper_size or "58mm" }}';
+    const padding = {{ settings.print_padding or 0 }};
+    const shopName = '{{ settings.shop_name }}';
+    const address = '{{ settings.address or "" }}';
+    const phone = '{{ settings.phone or "" }}';
+    const footer = '{{ settings.receipt_footer or "Thank You!" }}';
+    
+    // Determine width and font size based on paper size
+    let width, fontSize, h6Size, smallSize;
+    if (paperSize === '58mm') {
+      width = '48mm';
+      fontSize = '10px';
+      h6Size = '12px';
+      smallSize = '9px';
+    } else if (paperSize === '80mm') {
+      width = '72mm';
+      fontSize = '12px';
+      h6Size = '14px';
+      smallSize = '11px';
+    } else {
+      width = '180mm';
+      fontSize = '14px';
+      h6Size = '16px';
+      smallSize = '13px';
+    }
+    
+    // Create a test receipt
+    const testReceipt = `
+      <div id="testPrintContainer" style="max-width: 320px; margin: 0 auto; padding: 20px;">
+        <div class="text-center">
+          <h6 class="mb-0">${shopName}</h6>
+          ${address ? `<small class="text-muted">${address}</small><br>` : ''}
+          ${phone ? `<small class="text-muted">${phone}</small><br>` : ''}
+          <small>Date: ${new Date().toLocaleString()}</small><br>
+          <small>Invoice: TEST-001</small>
+        </div>
+        <hr class="my-2" style="border-style: dashed;">
+        <div class="small">
+          <div class="d-flex justify-content-between">
+            <div>Test Product 1 x2</div>
+            <div>1,000 Ks</div>
+          </div>
+          <div class="d-flex justify-content-between">
+            <div>Test Product 2 x1</div>
+            <div>500 Ks</div>
+          </div>
+        </div>
+        <hr class="my-2" style="border-style: dashed;">
+        <div class="d-flex justify-content-between">
+          <span class="fw-semibold">Subtotal</span>
+          <span>1,500 Ks</span>
+        </div>
+        <div class="d-flex justify-content-between">
+          <span>Tax</span>
+          <span>0 Ks</span>
+        </div>
+        <div class="d-flex justify-content-between fw-bold">
+          <span>Total</span>
+          <span>1,500 Ks</span>
+        </div>
+        <div class="d-flex justify-content-between">
+          <span>Payment</span>
+          <span>Cash</span>
+        </div>
+        <div class="text-center mt-3">
+          <small class="text-muted">${footer}</small>
+        </div>
+      </div>
+    `;
+    
+    // Create a temporary print container
+    const printContainer = document.createElement('div');
+    printContainer.id = 'testPrintContainer';
+    printContainer.innerHTML = testReceipt;
+    printContainer.style.position = 'absolute';
+    printContainer.style.left = '-9999px';
+    document.body.appendChild(printContainer);
+    
+    // Add print styles
+    const style = document.createElement('style');
+    style.textContent = `
+      @media print {
+        body * {
+          visibility: hidden;
+        }
+        #testPrintContainer, #testPrintContainer * {
+          visibility: visible;
+        }
+        #testPrintContainer {
+          position: absolute;
+          left: 0;
+          top: 0;
+          width: ${width};
+          font-size: ${fontSize};
+          padding-left: ${padding}px;
+          margin: 0;
+          padding-top: 0;
+          padding-right: 0;
+          padding-bottom: 0;
+        }
+        #testPrintContainer h6 {
+          font-size: ${h6Size};
+        }
+        #testPrintContainer small {
+          font-size: ${smallSize};
+        }
+      }
+    `;
+    document.head.appendChild(style);
+    
+    // Trigger print
+    window.print();
+    
+    // Clean up after print
+    setTimeout(() => {
+      if (document.body.contains(printContainer)) {
+        document.body.removeChild(printContainer);
+      }
+      if (document.head.contains(style)) {
+        document.head.removeChild(style);
+      }
+    }, 1000);
+  });
+
+  // Database Restore
+  document.getElementById('restoreBtn').addEventListener('click', function() {
+    const fileInput = document.getElementById('restoreFile');
+    const file = fileInput.files[0];
+    
+    if (!file) {
+      Toast.fire({
+        icon: 'warning',
+        title: 'Please select a backup file'
+      });
+      return;
+    }
+    
+    // Show password confirmation modal
+    Swal.fire({
+      title: 'Confirm Database Restore',
+      html: `
+        <div class="alert alert-danger mb-3">
+          <strong>⚠️ Warning:</strong> This will replace ALL current data with the backup file.
+        </div>
+        <p class="mb-3">Enter your password to confirm:</p>
+        <input type="password" id="restorePassword" class="swal2-input" placeholder="Your password">
+      `,
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonText: 'Restore Database',
+      confirmButtonColor: '#dc3545',
+      cancelButtonText: 'Cancel',
+      focusConfirm: false,
+      preConfirm: () => {
+        const password = document.getElementById('restorePassword').value;
+        if (!password) {
+          Swal.showValidationMessage('Password is required');
+          return false;
+        }
+        return password;
+      }
+    }).then((result) => {
+      if (result.isConfirmed) {
+        const password = result.value;
+        
+        // Show loading toast
+        const loadingToast = Toast.fire({
+          icon: 'info',
+          title: 'Restoring Data...',
+          didOpen: () => {
+            Swal.showLoading();
+          },
+          timer: 0
+        });
+        
+        // Prepare form data
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('password', password);
+        
+        // Submit restore request
+        fetch('{{ url_for("settings.restore_backup") }}', {
+          method: 'POST',
+          body: formData
+        })
+        .then(async response => {
+          const data = await response.json();
+          Swal.close();
+          
+          if (!response.ok) {
+            Toast.fire({
+              icon: 'error',
+              title: data.error || 'Restore failed',
+              timer: 3000
+            });
+            return;
+          }
+          
+          // Success - show toast and reload
+          Toast.fire({
+            icon: 'success',
+            title: data.message || 'Database restored successfully!'
+          });
+          
+          // Force reload after a short delay
+          setTimeout(() => {
+            window.location.reload();
+          }, 1500);
+        })
+        .catch(error => {
+          Swal.close();
+          console.error('Error:', error);
+          Toast.fire({
+            icon: 'error',
+            title: 'Error restoring database',
+            timer: 3000
+          });
+        });
+      }
+    });
+  });
+</script>
+{% endblock %}

@@ -1,0 +1,339 @@
+{% extends "base.html" %}
+
+{% block title %}Edit Purchase | Smart POS{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-0">
+  <div class="mb-2">
+    <a href="{{ url_for('purchases.index') }}" class="btn btn-outline-secondary btn-sm">
+      <i class="fa fa-arrow-left me-1"></i>Back to List
+    </a>
+  </div>
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="mb-0">Edit Purchase #{{ purchase.id }}</h4>
+    <a href="{{ url_for('purchases.suppliers') }}" class="btn btn-outline-primary">
+      <i class="fa fa-users me-1"></i>Manage Suppliers
+    </a>
+  </div>
+
+  <div class="card border-0 shadow-sm mb-3">
+    <div class="card-body">
+      <div class="row g-3">
+        <div class="col-md-4">
+          <label class="form-label">Supplier <span class="text-danger">*</span></label>
+          <select id="supplierSelect" class="form-select" required>
+            <option value="">Select Supplier</option>
+            {% for supplier in suppliers %}
+            <option value="{{ supplier.id }}" {% if purchase.supplier_id == supplier.id %}selected{% endif %}>{{ supplier.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Date</label>
+          <input type="date" id="purchaseDate" class="form-control" value="{{ purchase.date.strftime('%Y-%m-%d') }}">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Search Products</label>
+          <div class="input-group">
+            <input type="text" id="productSearch" class="form-control" placeholder="Search by name or barcode...">
+            <button class="btn btn-outline-secondary" type="button" id="searchBtn">
+              <i class="fa fa-search"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card border-0 shadow-sm">
+    <div class="card-header bg-white">
+      <h6 class="mb-0">Purchase Items</h6>
+    </div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0" id="purchaseItemsTable">
+          <thead class="table-light">
+            <tr>
+              <th>Product</th>
+              <th class="text-center" style="width: 120px;">Quantity</th>
+              <th class="text-end" style="width: 150px;">Cost Price</th>
+              <th class="text-end" style="width: 150px;">Subtotal</th>
+              <th class="text-center" style="width: 80px;">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="itemsBody">
+            <tr id="emptyRow">
+              <td colspan="5" class="text-center text-muted py-4">No items added. Search and add products above.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="card-footer bg-white">
+        <div class="d-flex justify-content-between align-items-center">
+          <div>
+            <strong class="fs-4">Total: <span id="grandTotal">0</span> Ks</strong>
+          </div>
+          <button class="btn btn-success btn-lg" id="savePurchaseBtn">
+            <i class="fa fa-save me-1"></i>Update Purchase
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Product Search Results Modal -->
+<div class="modal fade" id="productSearchModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Select Product</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div id="searchResults"></div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+  const purchaseItems = {};
+  let productSearchTimeout;
+
+  // Pre-fill with existing items
+  const existingItems = {{ purchase_items | tojson }};
+  existingItems.forEach(item => {
+    purchaseItems[item.product_id] = {
+      id: item.product_id,
+      name: item.product_name,
+      barcode: item.barcode,
+      quantity: item.quantity,
+      cost_price: item.cost_price,
+      subtotal: item.subtotal
+    };
+  });
+
+  function updateTotal() {
+    const total = Object.values(purchaseItems).reduce((sum, item) => sum + item.subtotal, 0);
+    document.getElementById('grandTotal').textContent = Number(total).toLocaleString();
+  }
+
+  function addItemToTable(product) {
+    if (purchaseItems[product.id]) {
+      purchaseItems[product.id].quantity += 1;
+      purchaseItems[product.id].subtotal = purchaseItems[product.id].quantity * purchaseItems[product.id].cost_price;
+    } else {
+      purchaseItems[product.id] = {
+        id: product.id,
+        name: product.name,
+        barcode: product.barcode,
+        quantity: 1,
+        cost_price: product.current_cost || 0,
+        subtotal: product.current_cost || 0
+      };
+    }
+    renderItemsTable();
+  }
+
+  function renderItemsTable() {
+    const tbody = document.getElementById('itemsBody');
+    tbody.innerHTML = '';
+
+    if (Object.keys(purchaseItems).length === 0) {
+      tbody.innerHTML = '<tr id="emptyRow"><td colspan="5" class="text-center text-muted py-4">No items added. Search and add products above.</td></tr>';
+      updateTotal();
+      return;
+    }
+
+    Object.values(purchaseItems).forEach(item => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>
+          <div><strong>${item.name}</strong></div>
+          <small class="text-muted">${item.barcode}</small>
+        </td>
+        <td class="text-center">
+          <input type="number" min="1" class="form-control form-control-sm qty-input" 
+                 data-id="${item.id}" value="${item.quantity}" autocomplete="off">
+        </td>
+        <td class="text-end">
+          <input type="number" step="0.01" min="0" class="form-control form-control-sm cost-input" 
+                 data-id="${item.id}" value="${item.cost_price}" autocomplete="off">
+        </td>
+        <td class="text-end fw-semibold subtotal-cell" data-id="${item.id}">
+          ${Number(item.subtotal).toLocaleString()} Ks
+        </td>
+        <td class="text-center">
+          <button class="btn btn-sm btn-outline-danger remove-item" data-id="${item.id}">
+            <i class="fa fa-times"></i>
+          </button>
+        </td>
+      `;
+      tbody.appendChild(tr);
+    });
+
+    // Attach event listeners
+    tbody.querySelectorAll('.qty-input').forEach(input => {
+      input.addEventListener('input', function() {
+        const id = parseInt(this.dataset.id);
+        const qty = Math.max(1, parseInt(this.value || 1));
+        if (purchaseItems[id]) {
+          purchaseItems[id].quantity = qty;
+          purchaseItems[id].subtotal = qty * purchaseItems[id].cost_price;
+          renderItemsTable();
+        }
+      });
+    });
+
+    tbody.querySelectorAll('.cost-input').forEach(input => {
+      input.addEventListener('input', function() {
+        const id = parseInt(this.dataset.id);
+        const cost = parseFloat(this.value || 0);
+        if (purchaseItems[id]) {
+          purchaseItems[id].cost_price = cost;
+          purchaseItems[id].subtotal = purchaseItems[id].quantity * cost;
+          renderItemsTable();
+        }
+      });
+    });
+
+    tbody.querySelectorAll('.remove-item').forEach(btn => {
+      btn.addEventListener('click', function() {
+        const id = parseInt(this.dataset.id);
+        delete purchaseItems[id];
+        renderItemsTable();
+      });
+    });
+
+    updateTotal();
+  }
+
+  // Product search with Enter key support
+  const productSearchInput = document.getElementById('productSearch');
+  productSearchInput.addEventListener('input', function(e) {
+    clearTimeout(productSearchTimeout);
+    const query = e.target.value.trim();
+    
+    if (query.length < 2) {
+      return;
+    }
+
+    productSearchTimeout = setTimeout(async () => {
+      try {
+        const response = await fetch(`/purchases/products/search?q=${encodeURIComponent(query)}`);
+        const data = await response.json();
+        
+        const resultsDiv = document.getElementById('searchResults');
+        if (data.products.length === 0) {
+          resultsDiv.innerHTML = '<p class="text-muted">No products found.</p>';
+        } else {
+          resultsDiv.innerHTML = data.products.map(p => `
+            <div class="card mb-2">
+              <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                  <div>
+                    <h6 class="mb-0">${p.name}</h6>
+                    <small class="text-muted">Barcode: ${p.barcode} | Cost: ${Number(p.current_cost).toLocaleString()} Ks | Stock: ${p.current_stock}</small>
+                  </div>
+                  <button class="btn btn-sm btn-primary add-product-btn" data-product='${JSON.stringify(p)}'>
+                    <i class="fa fa-plus"></i> Add
+                  </button>
+                </div>
+              </div>
+            </div>
+          `).join('');
+
+          resultsDiv.querySelectorAll('.add-product-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+              const product = JSON.parse(this.dataset.product);
+              addItemToTable(product);
+              const modal = bootstrap.Modal.getInstance(document.getElementById('productSearchModal'));
+              modal.hide();
+              productSearchInput.value = '';
+            });
+          });
+        }
+
+        const modal = new bootstrap.Modal(document.getElementById('productSearchModal'));
+        modal.show();
+      } catch (error) {
+        console.error(error);
+      }
+    }, 500);
+  });
+
+  document.getElementById('searchBtn').addEventListener('click', function() {
+    productSearchInput.dispatchEvent(new Event('input'));
+  });
+
+  // Enter key to add first product from search results
+  productSearchInput.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const modal = bootstrap.Modal.getInstance(document.getElementById('productSearchModal'));
+      if (modal && modal._isShown) {
+        const firstBtn = document.querySelector('#searchResults .add-product-btn');
+        if (firstBtn) {
+          firstBtn.click();
+        }
+      } else {
+        // Trigger search if modal not open
+        this.dispatchEvent(new Event('input'));
+      }
+    }
+  });
+
+  // Save purchase
+  document.getElementById('savePurchaseBtn').addEventListener('click', async function() {
+    const supplierId = document.getElementById('supplierSelect').value;
+    const purchaseDate = document.getElementById('purchaseDate').value;
+
+    if (!supplierId) {
+      alert('Please select a supplier.');
+      return;
+    }
+
+    const items = Object.values(purchaseItems);
+    if (items.length === 0) {
+      alert('Please add at least one item.');
+      return;
+    }
+
+    const payload = {
+      supplier_id: parseInt(supplierId),
+      date: purchaseDate,
+      items: items.map(i => ({
+        product_id: i.id,
+        quantity: i.quantity,
+        cost_price: i.cost_price
+      }))
+    };
+
+    try {
+      const response = await fetch('/purchases/{{ purchase.id }}/edit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        alert(data.error || 'Failed to update purchase.');
+        return;
+      }
+
+      alert(`Purchase updated successfully! Total: ${Number(data.total).toLocaleString()} Ks`);
+      window.location.href = '/purchases/';
+    } catch (error) {
+      console.error(error);
+      alert('Error updating purchase.');
+    }
+  });
+
+  renderItemsTable();
+</script>
+{% endblock %}

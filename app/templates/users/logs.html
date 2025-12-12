@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+
+{% block title %}Audit Logs | Smart POS{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-0">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="mb-0">
+      <i class="fa fa-history me-2"></i>Audit Logs
+    </h4>
+    <a href="{{ url_for('users.index') }}" class="btn btn-outline-secondary">
+      <i class="fa fa-arrow-left me-1"></i>Back to Users
+    </a>
+  </div>
+
+  <!-- Search Bar -->
+  <div class="card border-0 shadow-sm mb-3">
+    <div class="card-body">
+      <form method="GET" action="{{ url_for('users.logs') }}" class="d-flex gap-2">
+        <input type="text" 
+               name="q" 
+               class="form-control" 
+               placeholder="Search by action, details, user, or IP address..." 
+               value="{{ search_query }}">
+        <button type="submit" class="btn btn-primary">
+          <i class="fa fa-search me-1"></i>Search
+        </button>
+        {% if search_query %}
+        <a href="{{ url_for('users.logs') }}" class="btn btn-outline-secondary">
+          <i class="fa fa-times me-1"></i>Clear
+        </a>
+        {% endif %}
+      </form>
+    </div>
+  </div>
+
+  <!-- Logs Table -->
+  <div class="card border-0 shadow-sm">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead class="table-light">
+            <tr>
+              <th style="width: 150px;">Date/Time</th>
+              <th style="width: 120px;">User</th>
+              <th style="width: 150px;">Action</th>
+              <th>Details</th>
+              <th style="width: 130px;">IP Address</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% if logs %}
+              {% for log in logs %}
+              <tr>
+                <td>
+                  <small class="text-muted">
+                    {{ log.timestamp.strftime('%Y-%m-%d') }}<br>
+                    {{ log.timestamp.strftime('%H:%M:%S') }}
+                  </small>
+                </td>
+                <td>
+                  {% if log.user %}
+                    {% if log.user.role %}
+                      {% if log.user.role.name.lower() == 'admin' %}
+                        <span class="badge bg-danger">{{ log.user.username }}</span>
+                      {% else %}
+                        <span class="badge bg-info">{{ log.user.username }}</span>
+                      {% endif %}
+                    {% else %}
+                      <span class="badge bg-secondary">{{ log.user.username }}</span>
+                    {% endif %}
+                  {% else %}
+                    <span class="text-muted">System</span>
+                  {% endif %}
+                </td>
+                <td>
+                  {% if 'DELETE' in log.action %}
+                    <span class="badge bg-danger">{{ log.action }}</span>
+                  {% elif 'EDIT' in log.action or 'UPDATE' in log.action %}
+                    <span class="badge bg-primary">{{ log.action }}</span>
+                  {% elif 'CREATE' in log.action or 'ADD' in log.action %}
+                    <span class="badge bg-success">{{ log.action }}</span>
+                  {% elif 'LOGIN' in log.action or 'LOGOUT' in log.action %}
+                    <span class="badge bg-info">{{ log.action }}</span>
+                  {% elif 'FAIL' in log.action %}
+                    <span class="badge bg-warning text-dark">{{ log.action }}</span>
+                  {% else %}
+                    <span class="badge bg-secondary">{{ log.action }}</span>
+                  {% endif %}
+                </td>
+                <td>
+                  <small>{{ log.details or '-' }}</small>
+                </td>
+                <td>
+                  <small class="text-muted font-monospace">{{ log.ip_address or '-' }}</small>
+                </td>
+              </tr>
+              {% endfor %}
+            {% else %}
+              <tr>
+                <td colspan="5" class="text-center text-muted py-4">
+                  {% if search_query %}
+                    No logs found matching "{{ search_query }}"
+                  {% else %}
+                    No audit logs found
+                  {% endif %}
+                </td>
+              </tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  {% if logs %}
+  <div class="mt-3 text-muted small">
+    <i class="fa fa-info-circle me-1"></i>Showing last 500 logs. Use search to filter results.
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

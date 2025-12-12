@@ -1,0 +1,361 @@
+{% extends "base.html" %}
+
+{% block title %}Edit Sale | Smart POS{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-0">
+  <div class="mb-2">
+    <a href="{{ url_for('reports.overview') }}" class="btn btn-outline-secondary btn-sm">
+      <i class="fa fa-arrow-left me-1"></i>Back to Sales History
+    </a>
+  </div>
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="mb-0">Edit Sale - Invoice #{{ sale.invoice_no }}</h4>
+  </div>
+
+  <div class="row g-3">
+    <!-- Products -->
+    <div class="col-lg-8">
+      <div class="card border-0 shadow-sm h-100">
+        <div class="card-body d-flex flex-column">
+          <div class="mb-3">
+            <div class="input-group">
+              <span class="input-group-text bg-white"><i class="fa fa-search"></i></span>
+              <input type="text" id="productSearch" class="form-control" placeholder="Search by name or barcode">
+            </div>
+          </div>
+          <div class="overflow-auto" style="max-height: 70vh;">
+            <div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-3" id="productGrid">
+              {% for product in products %}
+              <div class="col product-card" data-name="{{ product.name | lower }}" data-barcode="{{ product.barcode | lower }}">
+                <div class="card h-100 border-0 shadow-sm">
+                  <img src="{{ product.image_file or 'https://via.placeholder.com/300x180?text=Product' }}" class="card-img-top" alt="{{ product.name }}">
+                  <div class="card-body">
+                    <h6 class="card-title mb-1">{{ product.name }}</h6>
+                    <div class="text-muted small mb-2">Barcode: {{ product.barcode }}</div>
+                    <div class="d-flex justify-content-between align-items-center">
+                      <span class="fw-bold">{{ '{:,.0f} Ks'.format(product.price or 0) }}</span>
+                      <small class="text-muted">Stock: {{ product.stock }}</small>
+                    </div>
+                  </div>
+                  <div class="card-footer bg-white border-0">
+                    <button class="btn btn-sm btn-primary w-100 add-to-cart"
+                            data-id="{{ product.id }}"
+                            data-name="{{ product.name }}"
+                            data-price="{{ product.price }}"
+                            data-stock="{{ product.stock }}">
+                      <i class="fa fa-cart-plus me-1"></i>Add
+                    </button>
+                  </div>
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Cart -->
+    <div class="col-lg-4">
+      <div class="card border-0 shadow-sm h-100">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center">
+          <h6 class="mb-0">Edit Sale</h6>
+          <span class="badge bg-secondary" id="cartCount">0</span>
+        </div>
+        <div class="card-body d-flex flex-column" style="height: 70vh;">
+          <div class="mb-2">
+            <label class="form-label small fw-semibold">Select Customer</label>
+            <select class="form-select form-select-sm" id="customerSelect">
+              <option value="">Walk-in Customer</option>
+              {% for c in customers %}
+              <option value="{{ c.id }}" {% if sale.customer_id == c.id %}selected{% endif %}>{{ c.name }}{% if c.phone %} ({{ c.phone }}){% endif %}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="mb-2">
+            <label class="form-label small fw-semibold">Payment Method</label>
+            <div class="d-flex gap-3">
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="paymentMethod" id="payCash" value="cash" {% if sale.payment_method == 'cash' %}checked{% endif %}>
+                <label class="form-check-label" for="payCash">Cash</label>
+              </div>
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="paymentMethod" id="payCredit" value="credit" {% if sale.payment_method == 'credit' %}checked{% endif %}>
+                <label class="form-check-label" for="payCredit">Credit</label>
+              </div>
+            </div>
+          </div>
+          <div class="mb-2">
+            <label class="form-label small fw-semibold">Date</label>
+            <input type="datetime-local" id="saleDate" class="form-control form-control-sm" value="{{ sale.date.strftime('%Y-%m-%dT%H:%M') }}">
+          </div>
+          <div class="table-responsive flex-grow-1">
+            <table class="table table-sm table-hover align-middle" id="cartTable">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th class="text-center" style="width:80px;">Qty</th>
+                  <th class="text-end" style="width:90px;">Price</th>
+                  <th class="text-end" style="width:100px;">Subtotal</th>
+                  <th class="text-end" style="width:60px;">Remove</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr class="text-center text-muted" id="emptyCartRow">
+                  <td colspan="5">Cart is empty</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="pt-3 border-top">
+            <div class="d-flex justify-content-between">
+              <span>Subtotal</span>
+              <span id="subtotalLabel">0 Ks</span>
+            </div>
+            <div class="d-flex justify-content-between">
+              <span>Tax (0%)</span>
+              <span id="taxLabel">0 Ks</span>
+            </div>
+            <div class="d-flex justify-content-between fw-bold fs-5 mt-2">
+              <span>Total</span>
+              <span id="totalLabel">0 Ks</span>
+            </div>
+            <button class="btn btn-success w-100 mt-3" id="updateSaleBtn">
+              <i class="fa fa-save me-1"></i>Update Sale
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+  const cart = {};
+  const formatKs = (value) => `${Number(value || 0).toLocaleString()} Ks`;
+
+  // Pre-fill with existing items
+  const existingItems = {{ sale_items | tojson }};
+  existingItems.forEach(item => {
+    cart[item.product_id] = {
+      id: item.product_id,
+      name: item.product_name,
+      price: item.price,
+      qty: item.quantity
+    };
+  });
+
+  function renderCart() {
+    const tbody = document.querySelector('#cartTable tbody');
+    tbody.innerHTML = '';
+    const items = Object.values(cart);
+    if (!items.length) {
+      tbody.innerHTML = '<tr class="text-center text-muted"><td colspan="4">Cart is empty</td></tr>';
+    } else {
+      items.forEach(item => {
+        const subtotal = item.price * item.qty;
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${item.name}</td>
+          <td class="text-center">
+            <input type="number" min="1" class="form-control form-control-sm qty-input" 
+                   data-id="${item.id}" value="${item.qty}" autocomplete="off"
+                   oninput="calculateRow(this)">
+          </td>
+          <td class="text-end">
+            <input type="number" step="0.01" min="0" class="form-control form-control-sm price-input" 
+                   data-id="${item.id}" value="${item.price}" autocomplete="off"
+                   oninput="calculateRow(this)">
+          </td>
+          <td class="text-end fw-semibold subtotal-cell" data-id="${item.id}">
+            ${formatKs(subtotal)}
+          </td>
+          <td class="text-end">
+            <button class="btn btn-sm btn-outline-danger remove-item" data-id="${item.id}">
+              <i class="fa fa-times"></i>
+            </button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+    document.getElementById('cartCount').textContent = items.reduce((a,b)=>a+b.qty,0);
+    updateTotals();
+  }
+
+  function updateTotals() {
+    const items = Object.values(cart);
+    const subtotal = items.reduce((sum, item) => sum + item.price * item.qty, 0);
+    const tax = 0;
+    const total = subtotal + tax;
+    document.getElementById('subtotalLabel').textContent = formatKs(subtotal);
+    document.getElementById('taxLabel').textContent = formatKs(tax);
+    document.getElementById('totalLabel').textContent = formatKs(total);
+  }
+
+  function addToCart(product) {
+    const existing = cart[product.id];
+    if (existing) {
+      existing.qty += 1;
+    } else {
+      cart[product.id] = { ...product, qty: 1 };
+    }
+    renderCart();
+  }
+
+  document.addEventListener('click', (e) => {
+    if (e.target.closest('.add-to-cart')) {
+      const btn = e.target.closest('.add-to-cart');
+      const product = {
+        id: parseInt(btn.dataset.id),
+        name: btn.dataset.name,
+        price: parseFloat(btn.dataset.price || 0)
+      };
+      addToCart(product);
+    }
+    if (e.target.closest('.remove-item')) {
+      const id = parseInt(e.target.closest('.remove-item').dataset.id);
+      delete cart[id];
+      renderCart();
+    }
+  });
+
+  // calculateRow function for oninput handlers
+  function calculateRow(input) {
+    const id = parseInt(input.dataset.id);
+    
+    if (input.classList.contains('qty-input')) {
+      // When user types in Quantity
+      const qty = Math.max(1, parseInt(input.value || 1));
+      if (cart[id]) {
+        cart[id].qty = qty;
+        // Immediately update Subtotal row
+        const subtotal = cart[id].price * qty;
+        const subtotalCell = document.querySelector(`.subtotal-cell[data-id="${id}"]`);
+        if (subtotalCell) {
+          subtotalCell.textContent = formatKs(subtotal);
+        }
+        // Immediately update Grand Total at the bottom
+        updateTotals();
+      }
+    } else if (input.classList.contains('price-input')) {
+      // When user types in Price
+      const price = Math.max(0, parseFloat(input.value || 0));
+      if (cart[id]) {
+        cart[id].price = price;
+        // Immediately update Subtotal row
+        const subtotal = price * cart[id].qty;
+        const subtotalCell = document.querySelector(`.subtotal-cell[data-id="${id}"]`);
+        if (subtotalCell) {
+          subtotalCell.textContent = formatKs(subtotal);
+        }
+        // Immediately update Grand Total at the bottom
+        updateTotals();
+      }
+    }
+  }
+
+  // Also keep event listeners for programmatic changes
+  document.addEventListener('input', (e) => {
+    if (e.target.classList.contains('qty-input') || e.target.classList.contains('price-input')) {
+      calculateRow(e.target);
+    }
+  });
+
+  // Search filter with Enter key support - allows typing product names to add dynamically
+  const productSearchInput = document.getElementById('productSearch');
+  let searchTimeout;
+  
+  productSearchInput.addEventListener('input', (e) => {
+    const term = e.target.value.toLowerCase().trim();
+    
+    // Clear previous timeout
+    clearTimeout(searchTimeout);
+    
+    if (term.length === 0) {
+      // Show all products when search is empty
+      document.querySelectorAll('.product-card').forEach(card => {
+        card.style.display = '';
+      });
+      return;
+    }
+    
+    // Filter products as user types
+    document.querySelectorAll('.product-card').forEach(card => {
+      const name = card.dataset.name;
+      const barcode = card.dataset.barcode;
+      const match = name.includes(term) || barcode.includes(term);
+      card.style.display = match ? '' : 'none';
+    });
+  });
+  
+  // Enter key to add first visible product dynamically
+  productSearchInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const visibleCards = Array.from(document.querySelectorAll('.product-card'))
+        .filter(card => card.style.display !== 'none');
+      
+      if (visibleCards.length > 0) {
+        const firstCard = visibleCards[0];
+        const addBtn = firstCard.querySelector('.add-to-cart');
+        if (addBtn) {
+          addBtn.click();
+          productSearchInput.value = '';
+          // Show all products again after adding
+          document.querySelectorAll('.product-card').forEach(card => {
+            card.style.display = '';
+          });
+        }
+      }
+    }
+  });
+
+  document.getElementById('updateSaleBtn').addEventListener('click', async () => {
+    const items = Object.values(cart);
+    if (!items.length) {
+      alert('Cart is empty.');
+      return;
+    }
+    const customerId = document.getElementById('customerSelect').value || null;
+    const paymentMethod = document.querySelector('input[name="paymentMethod"]:checked').value;
+    const saleDate = document.getElementById('saleDate').value;
+
+    const payload = {
+      cart_items: items.map(i => ({
+        product_id: i.id,
+        quantity: i.qty,
+        price: i.price
+      })),
+      customer_id: customerId ? parseInt(customerId) : null,
+      payment_method: paymentMethod,
+      date: saleDate,
+      tax: 0,
+      discount: 0
+    };
+    try {
+      const res = await fetch("/reports/sale/{{ sale.id }}/edit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || 'Update failed');
+        return;
+      }
+      alert('Sale updated successfully!');
+      window.location.href = '/reports/';
+    } catch (err) {
+      console.error(err);
+      alert('Error updating sale.');
+    }
+  });
+
+  renderCart();
+</script>
+{% endblock %}

@@ -1,0 +1,519 @@
+{% extends "base.html" %}
+
+{% block title %}POS | Smart POS{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-0">
+  <div class="row g-3">
+    <!-- Products -->
+    <div class="col-lg-8">
+      <div class="card border-0 shadow-sm h-100">
+        <div class="card-body d-flex flex-column">
+          <div class="mb-3">
+            <div class="input-group">
+              <span class="input-group-text bg-white"><i class="fa fa-search"></i></span>
+              <input type="text" id="productSearch" class="form-control" placeholder="Search by name or barcode">
+            </div>
+          </div>
+          <div class="overflow-auto" style="max-height: 70vh;">
+            <div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-3" id="productGrid">
+              {% for product in products %}
+              <div class="col product-card" data-name="{{ product.name | lower }}" data-barcode="{{ product.barcode | lower }}">
+                <div class="card h-100 border-0 shadow-sm">
+                  <img src="{% if product.image_url %}{{ product.image_url }}{% elif product.image_file %}{{ url_for('static', filename='uploads/' + product.image_file) }}{% else %}https://via.placeholder.com/300x180?text=Product{% endif %}" 
+                       class="card-img-top" alt="{{ product.name }}" style="height: 180px; object-fit: cover;">
+                  <div class="card-body">
+                    <h6 class="card-title mb-1">{{ product.name }}</h6>
+                    <div class="text-muted small mb-2">Barcode: {{ product.barcode }}</div>
+                    <div class="d-flex justify-content-between align-items-center">
+                      <span class="fw-bold">
+                        {{ '{:,.0f} Ks'.format(product.price or 0) }}
+                        {% if product.unit %}/ {{ product.unit.short_name }}{% endif %}
+                      </span>
+                      <small class="text-muted">Stock: {{ product.stock }}</small>
+                    </div>
+                  </div>
+                  <div class="card-footer bg-white border-0">
+                    <button class="btn btn-sm btn-primary w-100 add-to-cart"
+                            data-id="{{ product.id }}"
+                            data-name="{{ product.name }}"
+                            data-price="{{ product.price }}"
+                            data-stock="{{ product.stock }}"
+                            data-unit-short="{{ product.unit.short_name if product.unit else '' }}">
+                      <i class="fa fa-cart-plus me-1"></i>Add
+                    </button>
+                  </div>
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Cart -->
+    <div class="col-lg-4">
+      <div class="card border-0 shadow-sm h-100">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center">
+          <h6 class="mb-0">Cart</h6>
+          <span class="badge bg-secondary" id="cartCount">0</span>
+        </div>
+        <div class="card-body d-flex flex-column" style="height: 70vh;">
+          <div class="mb-2">
+            <label class="form-label small fw-semibold">Select Customer</label>
+            <select class="form-select form-select-sm" id="customerSelect">
+              <option value="">Walk-in Customer</option>
+              {% for c in customers %}
+              <option value="{{ c.id }}">{{ c.name }}{% if c.phone %} ({{ c.phone }}){% endif %}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="mb-2">
+            <label class="form-label small fw-semibold">Payment Method</label>
+            <select class="form-select form-select-sm" id="paymentMethodSelect">
+              <option value="cash">💵 Cash</option>
+              <option value="kpay">📱 KPay</option>
+              <option value="wavepay">🟨 WavePay</option>
+              <option value="credit">📝 Credit (Debt)</option>
+            </select>
+          </div>
+          <div class="table-responsive flex-grow-1">
+            <table class="table table-sm table-hover align-middle" id="cartTable">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th class="text-center" style="width:80px;">Qty</th>
+                  <th class="text-end" style="width:90px;">Price</th>
+                  <th class="text-end" style="width:60px;">Remove</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr class="text-center text-muted" id="emptyCartRow">
+                  <td colspan="4">Cart is empty</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="pt-3 border-top">
+            <div class="d-flex justify-content-between">
+              <span>Subtotal</span>
+              <span id="subtotalLabel">0 Ks</span>
+            </div>
+            <div class="d-flex justify-content-between">
+              <span>Tax (0%)</span>
+              <span id="taxLabel">0 Ks</span>
+            </div>
+            <div class="mb-2">
+              <label class="form-label small fw-semibold">Discount (Ks)</label>
+              <input type="number" class="form-control form-control-sm" id="discountInput" 
+                     value="0" min="0" step="0.01" placeholder="0">
+            </div>
+            <div class="d-flex justify-content-between">
+              <span>Discount</span>
+              <span id="discountLabel" class="text-danger">0 Ks</span>
+            </div>
+            <div class="d-flex justify-content-between fw-bold fs-5 mt-2">
+              <span>Grand Total</span>
+              <span id="totalLabel">0 Ks</span>
+            </div>
+            <button class="btn btn-success w-100 mt-3" id="checkoutBtn">
+              <i class="fa fa-cash-register me-1"></i>Checkout
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Receipt Modal -->
+<div class="modal fade" id="receiptModal" tabindex="-1" aria-labelledby="receiptModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered" style="max-width: 360px;">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="receiptModalLabel">Receipt</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div id="receipt" class="mx-auto" style="max-width: 320px;">
+          <div class="text-center">
+            {% if store.logo_filename and store.show_logo_on_receipt %}
+            <img src="{{ url_for('static', filename='uploads/logo/' + store.logo_filename) }}" 
+                 alt="Shop Logo" 
+                 class="receipt-logo">
+            {% endif %}
+            <h6 class="mb-0">{{ store.shop_name }}</h6>
+            {% if store.address %}
+            <small class="text-muted">{{ store.address }}</small><br>
+            {% endif %}
+            {% if store.phone %}
+            <small class="text-muted">{{ store.phone }}</small><br>
+            {% endif %}
+            {% if store.receipt_header %}
+            <small class="text-muted">{{ store.receipt_header }}</small><br>
+            {% endif %}
+            <small id="rcptDate"></small><br>
+            <small id="rcptInvoice"></small>
+          </div>
+          <hr class="my-2" style="border-style: dashed;">
+          <div id="rcptItems" class="small"></div>
+          <hr class="my-2" style="border-style: dashed;">
+          <div class="d-flex justify-content-between">
+            <span class="fw-semibold">Subtotal</span>
+            <span id="rcptSubtotal"></span>
+          </div>
+          <div class="d-flex justify-content-between">
+            <span>Tax</span>
+            <span id="rcptTax"></span>
+          </div>
+          <div class="d-flex justify-content-between d-none" id="rcptDiscountRow">
+            <span>Discount</span>
+            <span id="rcptDiscount" class="text-danger"></span>
+          </div>
+          <div class="d-flex justify-content-between fw-bold">
+            <span>Total</span>
+            <span id="rcptTotal"></span>
+          </div>
+          <div class="d-flex justify-content-between">
+            <span>Payment</span>
+            <span id="rcptPayment"></span>
+          </div>
+          <div class="d-flex justify-content-between d-none" id="rcptBalanceRow">
+            <span>Current Balance</span>
+            <span id="rcptBalance"></span>
+          </div>
+          <div class="text-center mt-3">
+            <small class="text-muted">{{ store.receipt_footer }}</small>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+        <button type="button" class="btn btn-primary" id="printReceiptBtn"><i class="fa fa-print me-1"></i>Print</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+  const cart = {};
+  const formatKs = (value) => `${Number(value || 0).toLocaleString()} Ks`;
+
+  function calculateTotal() {
+    const items = Object.values(cart);
+    const subtotal = items.reduce((sum, i) => sum + (i.price || 0) * (i.qty || 0), 0);
+    const tax = 0;
+    const discountInput = document.getElementById('discountInput');
+    let discount = parseFloat(discountInput.value || 0);
+    
+    // Ensure discount doesn't exceed subtotal
+    if (discount > subtotal) {
+      discount = subtotal;
+      discountInput.value = subtotal;
+    }
+    if (discount < 0) {
+      discount = 0;
+      discountInput.value = 0;
+    }
+    
+    const total = subtotal + tax - discount;
+    
+    document.getElementById('subtotalLabel').textContent = formatKs(subtotal);
+    document.getElementById('taxLabel').textContent = formatKs(tax);
+    document.getElementById('discountLabel').textContent = formatKs(discount);
+    document.getElementById('totalLabel').textContent = formatKs(total);
+    
+    return { subtotal, tax, discount, total };
+  }
+
+  function renderCart() {
+    const tbody = document.querySelector('#cartTable tbody');
+    tbody.innerHTML = '';
+    const items = Object.values(cart);
+    if (!items.length) {
+      tbody.innerHTML = '<tr class="text-center text-muted"><td colspan="4">Cart is empty</td></tr>';
+    } else {
+      items.forEach(item => {
+        const unitText = item.unit_short ? ` ${item.unit_short}` : '';
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${item.name}</td>
+          <td class="text-center">
+            <input type="number" min="1" class="form-control form-control-sm qty-input" data-id="${item.id}" value="${item.qty}">
+            <small class="text-muted">${item.qty}${unitText}</small>
+          </td>
+          <td class="text-end">${formatKs(item.price * item.qty)}</td>
+          <td class="text-end">
+            <button class="btn btn-sm btn-outline-danger remove-item" data-id="${item.id}">
+              <i class="fa fa-times"></i>
+            </button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+    document.getElementById('cartCount').textContent = items.reduce((a,b)=>a+b.qty,0);
+    calculateTotal();
+  }
+
+  function addToCart(product) {
+    const existing = cart[product.id];
+    if (existing) {
+      existing.qty += 1;
+    } else {
+      cart[product.id] = { ...product, qty: 1, unit_short: product.unit_short || '' };
+    }
+    renderCart();
+  }
+
+  document.addEventListener('click', (e) => {
+    if (e.target.closest('.add-to-cart')) {
+      const btn = e.target.closest('.add-to-cart');
+      const product = {
+        id: parseInt(btn.dataset.id),
+        name: btn.dataset.name,
+        price: parseFloat(btn.dataset.price || 0),
+        unit_short: btn.dataset.unitShort || ''
+      };
+      addToCart(product);
+    }
+    if (e.target.closest('.remove-item')) {
+      const id = parseInt(e.target.closest('.remove-item').dataset.id);
+      delete cart[id];
+      renderCart();
+    }
+  });
+
+  document.addEventListener('input', (e) => {
+    if (e.target.classList.contains('qty-input')) {
+      const id = parseInt(e.target.dataset.id);
+      const qty = Math.max(1, parseInt(e.target.value || 1));
+      if (cart[id]) {
+        cart[id].qty = qty;
+        renderCart();
+      }
+    }
+    if (e.target.id === 'discountInput') {
+      calculateTotal();
+    }
+  });
+
+  // Search filter
+  document.getElementById('productSearch').addEventListener('input', (e) => {
+    const term = e.target.value.toLowerCase();
+    document.querySelectorAll('.product-card').forEach(card => {
+      const name = card.dataset.name;
+      const barcode = card.dataset.barcode;
+      const match = name.includes(term) || barcode.includes(term);
+      card.style.display = match ? '' : 'none';
+    });
+  });
+
+  document.getElementById('checkoutBtn').addEventListener('click', async () => {
+    const items = Object.values(cart);
+    if (!items.length) {
+      Toast.fire({
+        icon: 'warning',
+        title: 'Cart is empty'
+      });
+      return;
+    }
+    const customerId = document.getElementById('customerSelect').value || null;
+    const paymentMethod = document.getElementById('paymentMethodSelect').value;
+    const totals = calculateTotal();
+    
+    const payload = {
+      cart_items: items.map(i => ({
+        product_id: i.id,
+        quantity: i.qty,
+        price: i.price
+      })),
+      tax: totals.tax,
+      discount: totals.discount,
+      payment_method: paymentMethod,
+      customer_id: customerId ? parseInt(customerId) : null
+    };
+    
+    // TOAST LOADING (No center modal)
+    const loadingToast = Toast.fire({
+      icon: 'info',
+      title: 'Processing Sale...',
+      didOpen: () => {
+        Swal.showLoading(); // Shows small spinner inside the toast
+      },
+      timer: 0 // Disable auto-close while loading
+    });
+    
+    try {
+      const res = await fetch("{{ url_for('pos.checkout') }}", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      
+      // Close loading toast
+      Swal.close();
+      
+      if (!res.ok) {
+        Toast.fire({
+          icon: 'error',
+          title: data.message || 'Checkout failed',
+          timer: 3000
+        });
+        return;
+      }
+      
+      // Show success toast
+      Toast.fire({
+        icon: 'success',
+        title: 'Sale Complete!',
+        timer: 2000
+      });
+      
+      showReceipt({
+        invoice_no: data.invoice_no,
+        items: items.map(i => ({ ...i, unit_short: i.unit_short || '' })),
+        subtotal: totals.subtotal,
+        tax: totals.tax,
+        discount: totals.discount,
+        total: data.total,
+        payment_method: data.payment_method,
+        customer_balance: data.customer_balance
+      });
+    } catch (err) {
+      console.error(err);
+      Swal.close(); // Close loading toast
+      Toast.fire({
+        icon: 'error',
+        title: 'Error processing checkout',
+        timer: 3000
+      });
+    }
+  });
+
+  function showReceipt({ invoice_no, items, subtotal, tax, discount, total, payment_method, customer_balance }) {
+    document.getElementById('rcptInvoice').textContent = `Invoice: ${invoice_no}`;
+    document.getElementById('rcptDate').textContent = new Date().toLocaleString();
+
+    const itemsContainer = document.getElementById('rcptItems');
+    itemsContainer.innerHTML = items.map(i => `
+      <div class="d-flex justify-content-between">
+        <div>${i.name} x${i.qty}</div>
+        <div>${formatKs(i.price * i.qty)}</div>
+      </div>
+    `).join('');
+
+    document.getElementById('rcptSubtotal').textContent = formatKs(subtotal);
+    document.getElementById('rcptTax').textContent = formatKs(tax);
+    const discountRow = document.getElementById('rcptDiscountRow');
+    if (discount > 0) {
+      document.getElementById('rcptDiscount').textContent = `-${formatKs(discount)}`;
+      discountRow.classList.remove('d-none');
+    } else {
+      discountRow.classList.add('d-none');
+    }
+    document.getElementById('rcptTotal').textContent = formatKs(parseFloat(total));
+    
+    // Payment method display with icons
+    const paymentLabels = {
+      'cash': '💵 Cash',
+      'kpay': '📱 KPay',
+      'wavepay': '🟨 WavePay',
+      'credit': '📝 Credit'
+    };
+    document.getElementById('rcptPayment').textContent = paymentLabels[payment_method.toLowerCase()] || payment_method;
+    const balanceRow = document.getElementById('rcptBalanceRow');
+    if (payment_method === 'credit' && customer_balance !== null && customer_balance !== undefined) {
+      document.getElementById('rcptBalance').textContent = formatKs(parseFloat(customer_balance));
+      balanceRow.classList.remove('d-none');
+    } else {
+      balanceRow.classList.add('d-none');
+    }
+
+    const modal = new bootstrap.Modal(document.getElementById('receiptModal'));
+    modal.show();
+
+    // Auto-print logic
+    const autoPrint = {% if store.auto_print %}true{% else %}false{% endif %};
+    if (autoPrint) {
+      // Wait a bit for modal to render, then trigger print
+      setTimeout(() => {
+        window.print();
+      }, 500);
+    }
+
+    // Clear cart after modal closes
+    const receiptEl = document.getElementById('receiptModal');
+    receiptEl.addEventListener('hidden.bs.modal', () => {
+      Object.keys(cart).forEach(k => delete cart[k]);
+      renderCart();
+    }, { once: true });
+  }
+
+  document.getElementById('printReceiptBtn').addEventListener('click', () => {
+    window.print();
+  });
+
+  renderCart();
+</script>
+
+<style>
+/* Receipt Logo Styling - Optimized for Thermal Printers */
+.receipt-logo {
+  max-width: 60%;       /* Don't span full width, looks nicer */
+  max-height: 80px;     /* Limit height */
+  display: block;
+  margin: 0 auto 10px;  /* Center align and add bottom space */
+  filter: grayscale(100%) contrast(120%); /* Convert to B&W and boost contrast for thermal paper */
+}
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  #receipt, #receipt * {
+    visibility: visible;
+  }
+  #receipt {
+    position: absolute;
+    left: 0;
+    top: 0;
+    {% if store.printer_paper_size == '58mm' %}
+    width: 48mm;
+    font-size: 10px;
+    {% elif store.printer_paper_size == '80mm' %}
+    width: 72mm;
+    font-size: 12px;
+    {% else %}
+    width: 180mm;
+    font-size: 14px;
+    {% endif %}
+    padding-left: {{ store.print_padding or 0 }}px;
+    margin: 0;
+    padding-top: 0;
+    padding-right: 0;
+    padding-bottom: 0;
+  }
+  #receipt h6 {
+    font-size: {% if store.printer_paper_size == '58mm' %}12px{% elif store.printer_paper_size == '80mm' %}14px{% else %}16px{% endif %};
+  }
+  #receipt small {
+    font-size: {% if store.printer_paper_size == '58mm' %}9px{% elif store.printer_paper_size == '80mm' %}11px{% else %}13px{% endif %};
+  }
+  /* Receipt Logo - Optimized for Thermal Printers */
+  .receipt-logo {
+    max-width: 60%;
+    max-height: 80px;
+    display: block;
+    margin: 0 auto 10px;
+    filter: grayscale(100%) contrast(120%);
+  }
+}
+</style>
+{% endblock %}

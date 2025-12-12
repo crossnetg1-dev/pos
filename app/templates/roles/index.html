@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+
+{% block title %}Role Management | Smart POS{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-0">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="mb-0">Role Management</h4>
+    <a href="{{ url_for('roles.add') }}" class="btn btn-success">
+      <i class="fa fa-plus me-1"></i>Add New Role
+    </a>
+  </div>
+
+  <div class="card border-0 shadow-sm">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead class="table-light">
+            <tr>
+              <th>ID</th>
+              <th>Role Name</th>
+              <th>Permissions</th>
+              <th class="text-center">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% if roles %}
+              {% for role in roles %}
+              <tr>
+                <td>{{ role.id }}</td>
+                <td><strong>{{ role.name }}</strong></td>
+                <td>
+                  {% if role.permissions %}
+                    {% set perms = role.permissions.split(',') %}
+                    {% for perm in perms[:3] %}
+                      <span class="badge bg-secondary me-1">{{ perm.strip() }}</span>
+                    {% endfor %}
+                    {% if perms|length > 3 %}
+                      <span class="text-muted">+{{ perms|length - 3 }} more</span>
+                    {% endif %}
+                  {% else %}
+                    <span class="text-muted">No permissions</span>
+                  {% endif %}
+                </td>
+                <td class="text-center">
+                  <a href="{{ url_for('roles.edit', role_id=role.id) }}" class="btn btn-sm btn-outline-primary me-1">
+                    <i class="fa fa-edit"></i>
+                  </a>
+                  {% if role.name.lower() != 'admin' %}
+                  <form method="POST" action="{{ url_for('roles.delete', role_id=role.id) }}" class="d-inline">
+                    <button class="btn btn-sm btn-outline-danger" onclick="return confirm('Delete this role?')">
+                      <i class="fa fa-trash"></i>
+                    </button>
+                  </form>
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            {% else %}
+              <tr>
+                <td colspan="4" class="text-center text-muted py-4">No roles found. Add your first role above.</td>
+              </tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

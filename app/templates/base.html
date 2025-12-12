@@ -1,0 +1,382 @@
+<!doctype html>
+<html lang="en" data-bs-theme="light">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}Smart POS{% endblock %}</title>
+    <!-- CRITICAL: Apply theme immediately before any CSS loads to prevent white flash -->
+    <script>
+      // Immediately apply theme before the page renders
+      (function() {
+        const savedTheme = localStorage.getItem('theme') || 'light';
+        document.documentElement.setAttribute('data-bs-theme', savedTheme);
+      })();
+    </script>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+      :root {
+        --sidebar-width: 250px;
+      }
+      body {
+        min-height: 100vh;
+        background: #f4f6f9;
+        transition: background-color 0.3s ease, color 0.3s ease;
+      }
+      [data-bs-theme="dark"] body {
+        background: #0d1117;
+      }
+      .sidebar {
+        width: var(--sidebar-width);
+        background: #111827;
+        color: #e5e7eb;
+        position: fixed;
+        top: 0;
+        bottom: 0;
+        left: 0;
+        padding: 1.5rem 1rem;
+        overflow-y: auto;
+        transition: transform 0.2s ease, background-color 0.3s ease;
+      }
+      [data-bs-theme="dark"] .sidebar {
+        background: #161b22;
+      }
+      .sidebar .brand {
+        font-weight: 700;
+        font-size: 1.25rem;
+      }
+      .sidebar a {
+        color: #cbd5e1;
+        text-decoration: none;
+        display: block;
+        padding: .65rem .9rem;
+        border-radius: .5rem;
+        margin-bottom: .35rem;
+        font-weight: 600;
+        letter-spacing: .01em;
+      }
+      .sidebar a:hover,
+      .sidebar a.active {
+        background: #1f2937;
+        color: #fff;
+      }
+      .sidebar i {
+        width: 20px;
+      }
+      .content-wrapper {
+        margin-left: var(--sidebar-width);
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+      }
+      .navbar-top {
+        background: #ffffff;
+        border-bottom: 1px solid #e5e7eb;
+        transition: background-color 0.3s ease, border-color 0.3s ease;
+      }
+      [data-bs-theme="dark"] .navbar-top {
+        background: #161b22;
+        border-bottom-color: #30363d;
+      }
+      .main-content {
+        padding: 1.5rem;
+        flex: 1 0 auto;
+        transition: background-color 0.3s ease;
+      }
+      [data-bs-theme="dark"] .main-content {
+        background: #0d1117;
+      }
+      /* Theme toggle button */
+      .theme-toggle {
+        border: none;
+        background: transparent;
+        color: inherit;
+        font-size: 1.2rem;
+        padding: 0.5rem;
+        cursor: pointer;
+        border-radius: 0.375rem;
+        transition: background-color 0.2s ease;
+      }
+      .theme-toggle:hover {
+        background-color: rgba(0, 0, 0, 0.05);
+      }
+      [data-bs-theme="dark"] .theme-toggle:hover {
+        background-color: rgba(255, 255, 255, 0.1);
+      }
+      /* Ensure tables work well in both themes */
+      [data-bs-theme="dark"] .table {
+        --bs-table-bg: #161b22;
+        --bs-table-color: #c9d1d9;
+        --bs-table-border-color: #30363d;
+      }
+      [data-bs-theme="dark"] .table-striped > tbody > tr:nth-of-type(odd) > td {
+        --bs-table-accent-bg: rgba(255, 255, 255, 0.03);
+      }
+      [data-bs-theme="dark"] .card {
+        background-color: #161b22;
+        border-color: #30363d;
+        color: #c9d1d9;
+      }
+      .main-content {
+        padding: 1.5rem;
+        flex: 1 0 auto;
+      }
+      @media (max-width: 992px) {
+        .sidebar {
+          transform: translateX(-100%);
+        }
+        .sidebar.show {
+          transform: translateX(0);
+        }
+        .content-wrapper {
+          margin-left: 0;
+        }
+      }
+    </style>
+    {% block head %}{% endblock %}
+  </head>
+  <body>
+    <aside class="sidebar d-flex flex-column" id="sidebar">
+      <div class="d-flex align-items-center justify-content-between mb-4">
+        <span class="brand">{{ store.shop_name }}</span>
+        <button class="btn btn-sm btn-outline-light d-lg-none" type="button" onclick="document.getElementById('sidebar').classList.toggle('show')">
+          <i class="fa fa-bars"></i>
+        </button>
+      </div>
+      <nav>
+        {% if current_user.is_authenticated and (current_user.has_permission('dashboard_view') or (current_user.role and current_user.role.name.lower() == 'admin')) %}
+        <a href="{{ url_for('main.dashboard') }}" class="{% if request.endpoint=='main.dashboard' %}active{% endif %}">
+          <i class="fa fa-home"></i> Dashboard
+        </a>
+        {% endif %}
+        {% if current_user.is_authenticated and (current_user.has_permission('pos_access') or (current_user.role and current_user.role.name.lower() == 'admin')) %}
+        <a href="{{ url_for('pos.cart') }}" class="{% if request.blueprint=='pos' %}active{% endif %}">
+          <i class="fa fa-desktop"></i> POS
+        </a>
+        {% endif %}
+        {% if current_user.is_authenticated and (current_user.has_permission('inventory_view') or (current_user.role and current_user.role.name.lower() == 'admin')) %}
+        <a href="{{ url_for('inventory.products') }}" class="{% if request.blueprint=='inventory' and request.endpoint != 'inventory.labels' %}active{% endif %}">
+          <i class="fa fa-box"></i> Products
+        </a>
+        <a href="{{ url_for('inventory.labels') }}" class="{% if request.endpoint == 'inventory.labels' %}active{% endif %}">
+          <i class="fa fa-barcode"></i> Barcode Labels
+        </a>
+        {% endif %}
+        {% if current_user.is_authenticated and (current_user.has_permission('categories_manage') or (current_user.role and current_user.role.name.lower() == 'admin')) %}
+        <a href="{{ url_for('categories.index') }}" class="{% if request.blueprint=='categories' %}active{% endif %}">
+          <i class="fa fa-tags"></i> Categories
+        </a>
+        {% endif %}
+        {% if current_user.is_authenticated and (current_user.has_permission('units_manage') or (current_user.role and current_user.role.name.lower() == 'admin')) %}
+        <a href="{{ url_for('units.index') }}" class="{% if request.blueprint=='units' %}active{% endif %}">
+          <i class="fa fa-ruler"></i> Units
+        </a>
+        {% endif %}
+        {% if current_user.is_authenticated and (current_user.has_permission('sales_view') or (current_user.role and current_user.role.name.lower() == 'admin')) %}
+        <a href="{{ url_for('reports.overview') }}" class="{% if request.blueprint=='reports' %}active{% endif %}">
+          <i class="fa fa-chart-bar"></i> Sales
+        </a>
+        {% endif %}
+        {% if current_user.is_authenticated and (current_user.has_permission('customers_manage') or (current_user.role and current_user.role.name.lower() == 'admin')) %}
+        <a href="{{ url_for('customers.index') }}" class="{% if request.blueprint=='customers' %}active{% endif %}">
+          <i class="fa fa-users"></i> Customers
+        </a>
+        {% endif %}
+        {% if current_user.is_authenticated and (current_user.has_permission('purchases_manage') or (current_user.role and current_user.role.name.lower() == 'admin')) %}
+        <a href="{{ url_for('purchases.index') }}" class="{% if request.blueprint=='purchases' %}active{% endif %}">
+          <i class="fa fa-shopping-cart"></i> Purchases
+        </a>
+        {% endif %}
+        {% if current_user.is_authenticated and (current_user.has_permission('users_manage') or (current_user.role and current_user.role.name.lower() == 'admin')) %}
+        <a href="{{ url_for('roles.index') }}" class="{% if request.blueprint=='roles' %}active{% endif %}">
+          <i class="fa fa-shield"></i> Roles
+        </a>
+        {% endif %}
+        {% if current_user.is_authenticated and (current_user.has_permission('users_manage') or (current_user.role and current_user.role.name.lower() == 'admin')) %}
+        <a href="{{ url_for('users.index') }}" class="{% if request.blueprint=='users' %}active{% endif %}">
+          <i class="fa fa-user-shield"></i> Users
+        </a>
+        {% endif %}
+        {% if current_user.is_authenticated and (current_user.has_permission('settings_access') or (current_user.role and current_user.role.name.lower() == 'admin')) %}
+        <a href="{{ url_for('settings.index') }}" class="{% if request.blueprint=='settings' %}active{% endif %}">
+          <i class="fa fa-cog"></i> Settings
+        </a>
+        {% endif %}
+        {% if current_user.is_authenticated %}
+        <a href="{{ url_for('auth.logout') }}">
+          <i class="fa fa-arrow-right-from-bracket"></i> Logout
+        </a>
+        {% else %}
+        <a href="{{ url_for('auth.login') }}">
+          <i class="fa fa-sign-in-alt"></i> Login
+        </a>
+        {% endif %}
+      </nav>
+    </aside>
+
+    <div class="content-wrapper">
+      <nav class="navbar navbar-expand-lg navbar-top shadow-sm px-3">
+        <button class="btn btn-outline-secondary d-lg-none me-3" type="button" onclick="document.getElementById('sidebar').classList.toggle('show')">
+          <i class="fa fa-bars"></i>
+        </button>
+        <a class="navbar-brand fw-semibold" href="{{ url_for('main.dashboard') }}">{{ store.shop_name }}</a>
+        <div class="ms-auto d-flex align-items-center gap-3">
+          <!-- Theme Toggle Button -->
+          <button class="theme-toggle" id="themeToggle" type="button" aria-label="Toggle theme">
+            <i class="fa fa-moon" id="themeIcon"></i>
+          </button>
+          
+          <ul class="navbar-nav align-items-center">
+            <li class="nav-item dropdown">
+              <a class="nav-link dropdown-toggle d-flex align-items-center" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                <i class="fa fa-user-circle fa-lg me-2"></i>
+                <span>{{ current_user.username if current_user.is_authenticated else "Guest" }}</span>
+              </a>
+              <ul class="dropdown-menu dropdown-menu-end">
+                {% if current_user.is_authenticated %}
+                  <li><a class="dropdown-item" href="{{ url_for('auth.logout') }}">Logout</a></li>
+                {% else %}
+                  <li><a class="dropdown-item" href="{{ url_for('auth.login') }}">Login</a></li>
+                {% endif %}
+              </ul>
+            </li>
+          </ul>
+        </div>
+      </nav>
+
+      <div class="main-content">
+        {% with messages = get_flashed_messages(with_categories=True) %}
+          {% if messages %}
+            <div class="mb-3">
+              {% for category, message in messages %}
+                <div class="alert alert-{{ 'info' if category=='message' else category }} alert-dismissible fade show" role="alert">
+                  {{ message }}
+                  <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+              {% endfor %}
+            </div>
+          {% endif %}
+        {% endwith %}
+
+        {% block content %}{% endblock %}
+      </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script>
+      // Toast Mixin for Small, Minimalist Notifications
+      const Toast = Swal.mixin({
+        toast: true,
+        position: 'top-end', // Top Right Corner
+        showConfirmButton: false,
+        timer: 2000, // Exactly 2 seconds as requested
+        timerProgressBar: true,
+        didOpen: (toast) => {
+          toast.addEventListener('mouseenter', Swal.stopTimer);
+          toast.addEventListener('mouseleave', Swal.resumeTimer);
+        }
+      });
+
+      // Context-Specific Form Submit Loading Messages (Toast-based)
+      document.addEventListener('submit', function(e) {
+        const form = e.target;
+        // Find the submit button that was clicked (focused) or the first submit button
+        const submitBtn = form.querySelector('[type="submit"]:focus') || 
+                         form.querySelector('button[type="submit"]') ||
+                         form.querySelector('input[type="submit"]');
+        
+        // Get the loading text from data attribute, or use default
+        const actionText = submitBtn ? (submitBtn.getAttribute('data-loading-text') || 'Processing...') : 'Processing...';
+        
+        // TOAST LOADING (No center modal)
+        Toast.fire({
+          icon: 'info', // Optional: Info icon or just text
+          title: actionText,
+          didOpen: () => {
+            Swal.showLoading(); // Shows small spinner inside the toast
+          },
+          timer: 0 // Disable auto-close while loading
+        });
+      });
+
+      // Flash Message Success/Error Popups (Toast Style)
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          {% for category, message in messages %}
+            {% if category == 'success' %}
+              Toast.fire({
+                icon: 'success',
+                title: '{{ message }}'
+              });
+            {% elif category == 'error' or category == 'danger' %}
+              Toast.fire({
+                icon: 'error',
+                title: '{{ message }}',
+                timer: 3000
+              });
+            {% elif category == 'warning' %}
+              Toast.fire({
+                icon: 'warning',
+                title: '{{ message }}',
+                timer: 2500
+              });
+            {% elif category == 'info' %}
+              Toast.fire({
+                icon: 'info',
+                title: '{{ message }}'
+              });
+            {% endif %}
+          {% endfor %}
+        {% endif %}
+      {% endwith %}
+
+      // Theme Toggle Functionality (only handles button clicks, theme already applied in head)
+      (function() {
+        const themeToggle = document.getElementById('themeToggle');
+        const themeIcon = document.getElementById('themeIcon');
+        const htmlElement = document.documentElement;
+        
+        // Update icon based on current theme
+        function updateIcon() {
+          const currentTheme = htmlElement.getAttribute('data-bs-theme');
+          if (currentTheme === 'dark') {
+            if (themeIcon) {
+              themeIcon.classList.remove('fa-moon');
+              themeIcon.classList.add('fa-sun');
+            }
+          } else {
+            if (themeIcon) {
+              themeIcon.classList.remove('fa-sun');
+              themeIcon.classList.add('fa-moon');
+            }
+          }
+        }
+        
+        // Update icon on page load
+        updateIcon();
+        
+        // Toggle theme on button click
+        if (themeToggle) {
+          themeToggle.addEventListener('click', function() {
+            const currentTheme = htmlElement.getAttribute('data-bs-theme');
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            
+            // Apply new theme
+            htmlElement.setAttribute('data-bs-theme', newTheme);
+            
+            // Update icon
+            updateIcon();
+            
+            // Save to localStorage
+            localStorage.setItem('theme', newTheme);
+          });
+        }
+      })();
+    </script>
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+    {% block scripts %}{% endblock %}
+  </body>
+</html>

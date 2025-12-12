@@ -1,0 +1,572 @@
+{% extends "base.html" %}
+
+{% block title %}Sales History | Smart POS{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-0">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="mb-0">Transaction History</h4>
+    <button class="btn btn-success" id="exportBtn" disabled>
+      <i class="fa fa-file-excel me-1"></i>Export to Excel
+    </button>
+  </div>
+
+  <!-- Search Bar -->
+  <div class="card border-0 shadow-sm mb-3">
+    <div class="card-body">
+      <form method="get" action="{{ url_for('reports.overview') }}" class="row g-3">
+        <div class="col-md-8">
+          <div class="input-group">
+            <span class="input-group-text bg-white"><i class="fa fa-search"></i></span>
+            <input type="text" name="q" class="form-control" 
+                   placeholder="Search Invoice No. or Customer Name..." 
+                   value="{{ search_query or '' }}" autofocus>
+            {% if start_date %}
+            <input type="hidden" name="start_date" value="{{ start_date }}">
+            {% endif %}
+            {% if end_date %}
+            <input type="hidden" name="end_date" value="{{ end_date }}">
+            {% endif %}
+          </div>
+        </div>
+        <div class="col-md-4">
+          <button type="submit" class="btn btn-primary w-100">
+            <i class="fa fa-search me-1"></i>Search
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="card border-0 shadow-sm mb-3">
+    <div class="card-body">
+      <form method="get" action="{{ url_for('reports.overview') }}" class="row g-3">
+        <div class="col-md-4">
+          <label class="form-label">Start Date</label>
+          <input type="date" name="start_date" class="form-control" value="{{ start_date }}">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">End Date</label>
+          <input type="date" name="end_date" class="form-control" value="{{ end_date }}">
+        </div>
+        <div class="col-md-4 d-flex align-items-end">
+          <button type="submit" class="btn btn-primary me-2">
+            <i class="fa fa-filter me-1"></i>Filter
+          </button>
+          <a href="{{ url_for('reports.overview') }}" class="btn btn-outline-secondary">
+            <i class="fa fa-times me-1"></i>Clear
+          </a>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="card border-0 shadow-sm">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+      <h6 class="mb-0">Sales Summary</h6>
+      <div>
+        <span class="badge bg-info me-2">Total Sales: {{ sales_count }}</span>
+        <span class="badge bg-success">Revenue: {{ "{:,.0f} Ks".format(revenue or 0) }}</span>
+      </div>
+    </div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-hover table-striped align-middle mb-0">
+          <thead class="table-light">
+            <tr>
+              <th>Invoice #</th>
+              <th>Date</th>
+              <th>Customer</th>
+              <th>Payment Method</th>
+              <th class="text-end">Total Amount</th>
+              <th class="text-center">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% if sales %}
+              {% for sale in sales %}
+              <tr>
+                <td>
+                  <code>{{ sale.invoice_no }}</code>
+                  {% if sale.status and sale.status != 'completed' %}
+                  <br><span class="badge bg-danger">{{ sale.status.replace('_', ' ').title() }}</span>
+                  {% endif %}
+                </td>
+                <td>{{ sale.date.strftime('%Y-%m-%d %H:%M') }}</td>
+                <td>{{ sale.customer.name if sale.customer else 'Walk-in Customer' }}</td>
+                <td>
+                  {% set pm = sale.payment_method|lower %}
+                  {% if pm == 'cash' %}
+                  <span class="badge bg-success">💵 Cash</span>
+                  {% elif pm == 'kpay' %}
+                  <span class="badge" style="background-color: #ff6b35;">📱 KPay</span>
+                  {% elif pm == 'wavepay' %}
+                  <span class="badge bg-warning text-dark">🟨 WavePay</span>
+                  {% elif pm == 'credit' %}
+                  <span class="badge bg-info">📝 Credit</span>
+                  {% else %}
+                  <span class="badge bg-secondary">{{ sale.payment_method|title }}</span>
+                  {% endif %}
+                </td>
+                <td class="text-end fw-semibold">{{ "{:,.0f} Ks".format(sale.total_amount or 0) }}</td>
+                <td class="text-center">
+                  <button class="btn btn-sm btn-outline-primary me-1 view-details" 
+                          data-sale-id="{{ sale.id }}">
+                    <i class="fa fa-eye"></i> View
+                  </button>
+                  <button class="btn btn-sm btn-outline-info me-1 reprint-sale" 
+                          data-sale-id="{{ sale.id }}">
+                    <i class="fa fa-print"></i>
+                  </button>
+                  {% if current_user.has_permission('sales_edit') or (current_user.role and current_user.role.name.lower() == 'admin') %}
+                  <a href="{{ url_for('reports.edit_sale', sale_id=sale.id) }}" 
+                     class="btn btn-sm btn-outline-secondary me-1">
+                    <i class="fa fa-edit"></i>
+                  </a>
+                  {% endif %}
+                  {% if current_user.role and current_user.role.name.lower() == 'admin' or current_user.has_permission('sales_delete') %}
+                  <button class="btn btn-sm btn-danger" onclick="confirmDeleteSale({{ sale.id }}, '{{ url_for('reports.delete_sale', sale_id=0) }}')">
+                    <i class="fa fa-trash"></i>
+                  </button>
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            {% else %}
+              <tr>
+                <td colspan="6" class="text-center text-muted py-4">No sales found.</td>
+              </tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- View Details Modal -->
+<div class="modal fade" id="saleDetailsModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Sale Details</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="saleDetailsContent">
+        <div class="text-center">
+          <div class="spinner-border" role="status">
+            <span class="visually-hidden">Loading...</span>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Receipt Modal (for Reprint) -->
+<div class="modal fade" id="receiptModal" tabindex="-1" aria-labelledby="receiptModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered" style="max-width: 360px;">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="receiptModalLabel">Receipt</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div id="receipt" class="mx-auto" style="max-width: 320px;">
+          <div class="text-center">
+            <h6 class="mb-0">{{ store.shop_name }}</h6>
+            {% if store.address %}
+            <small class="text-muted">{{ store.address }}</small><br>
+            {% endif %}
+            {% if store.phone %}
+            <small class="text-muted">{{ store.phone }}</small><br>
+            {% endif %}
+            {% if store.receipt_header %}
+            <small class="text-muted">{{ store.receipt_header }}</small><br>
+            {% endif %}
+            <small id="rcptDate"></small><br>
+            <small id="rcptInvoice"></small>
+          </div>
+          <hr class="my-2" style="border-style: dashed;">
+          <div id="rcptItems" class="small"></div>
+          <hr class="my-2" style="border-style: dashed;">
+          <div class="d-flex justify-content-between">
+            <span class="fw-semibold">Subtotal</span>
+            <span id="rcptSubtotal"></span>
+          </div>
+          <div class="d-flex justify-content-between">
+            <span>Tax</span>
+            <span id="rcptTax"></span>
+          </div>
+          <div class="d-flex justify-content-between fw-bold">
+            <span>Total</span>
+            <span id="rcptTotal"></span>
+          </div>
+          <div class="d-flex justify-content-between">
+            <span>Payment</span>
+            <span id="rcptPayment"></span>
+          </div>
+          <div class="d-flex justify-content-between d-none" id="rcptBalanceRow">
+            <span>Current Balance</span>
+            <span id="rcptBalance"></span>
+          </div>
+          <div class="text-center mt-3">
+            <small class="text-muted">{{ store.receipt_footer }}</small>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+        <button type="button" class="btn btn-primary" id="printReceiptBtn"><i class="fa fa-print me-1"></i>Print</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+  document.querySelectorAll('.view-details').forEach(btn => {
+    btn.addEventListener('click', async function() {
+      const saleId = this.dataset.saleId;
+      const modal = new bootstrap.Modal(document.getElementById('saleDetailsModal'));
+      const content = document.getElementById('saleDetailsContent');
+      
+      // Show loading
+      content.innerHTML = '<div class="text-center"><div class="spinner-border" role="status"><span class="visually-hidden">Loading...</span></div></div>';
+      modal.show();
+
+      try {
+        const response = await fetch(`/reports/sale/${saleId}`);
+        const data = await response.json();
+
+        if (!response.ok) {
+          content.innerHTML = '<div class="alert alert-danger">Error loading sale details.</div>';
+          return;
+        }
+
+        // Format items table
+        const itemsHtml = data.items.map(item => `
+          <tr>
+            <td>${item.product_name}</td>
+            <td class="text-center">${item.quantity}${item.returned_quantity > 0 ? ` <span class="badge bg-warning">-${item.returned_quantity} returned</span>` : ''}</td>
+            <td class="text-end">${Number(item.price).toLocaleString()} Ks</td>
+            <td class="text-end">${Number(item.subtotal).toLocaleString()} Ks</td>
+          </tr>
+        `).join('');
+
+        content.innerHTML = `
+          <div class="mb-3">
+            <div class="row">
+              <div class="col-md-6">
+                <strong>Invoice #:</strong> <code>${data.invoice_no}</code>
+              </div>
+              <div class="col-md-6">
+                <strong>Date:</strong> ${data.date}
+              </div>
+            </div>
+          <div class="row mt-2">
+            <div class="col-md-6">
+              <strong>Customer:</strong> ${data.customer}
+            </div>
+            <div class="col-md-6">
+              <strong>Payment:</strong> <span class="badge ${data.payment_method === 'cash' ? 'bg-success' : 'bg-warning'}">${data.payment_method}</span>
+              ${data.status && data.status !== 'completed' ? `<br><span class="badge bg-danger mt-1">${data.status.replace('_', ' ').toUpperCase()}</span>` : ''}
+            </div>
+          </div>
+          ${data.returned_amount > 0 ? `
+          <div class="alert alert-warning mt-2">
+            <strong>Returned Amount:</strong> ${Number(data.returned_amount).toLocaleString()} Ks
+          </div>
+          ` : ''}
+        </div>
+        <hr>
+        <h6 class="mb-3">Items</h6>
+          <div class="table-responsive">
+            <table class="table table-sm">
+              <thead>
+                <tr>
+                  <th>Product</th>
+                  <th class="text-center">Qty</th>
+                  <th class="text-end">Price</th>
+                  <th class="text-end">Subtotal</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${itemsHtml}
+              </tbody>
+            </table>
+          </div>
+          <hr>
+          <div class="row">
+            <div class="col-md-8 text-end"><strong>Subtotal:</strong></div>
+            <div class="col-md-4 text-end">${Number(data.subtotal).toLocaleString()} Ks</div>
+          </div>
+          <div class="row">
+            <div class="col-md-8 text-end"><strong>Tax:</strong></div>
+            <div class="col-md-4 text-end">${Number(data.tax).toLocaleString()} Ks</div>
+          </div>
+          <div class="row">
+            <div class="col-md-8 text-end"><strong>Discount:</strong></div>
+            <div class="col-md-4 text-end">${Number(data.discount).toLocaleString()} Ks</div>
+          </div>
+          <div class="row mt-2">
+            <div class="col-md-8 text-end"><strong class="fs-5">Total:</strong></div>
+            <div class="col-md-4 text-end"><strong class="fs-5">${Number(data.total).toLocaleString()} Ks</strong></div>
+          </div>
+        `;
+      } catch (error) {
+        console.error(error);
+        content.innerHTML = '<div class="alert alert-danger">Error loading sale details.</div>';
+      }
+    });
+  });
+
+  // Format Ks function (reused from POS)
+  const formatKs = (value) => `${Number(value || 0).toLocaleString()} Ks`;
+
+  // Reprint Sale
+  document.querySelectorAll('.reprint-sale').forEach(btn => {
+    btn.addEventListener('click', async function() {
+      const saleId = this.dataset.saleId;
+      const modal = new bootstrap.Modal(document.getElementById('receiptModal'));
+      modal.show();
+
+      try {
+        const response = await fetch(`/reports/sale/${saleId}`);
+        const data = await response.json();
+
+        if (!response.ok) {
+          alert('Error loading sale details.');
+          return;
+        }
+
+        // Populate receipt
+        document.getElementById('rcptInvoice').textContent = `Invoice: ${data.invoice_no}`;
+        document.getElementById('rcptDate').textContent = new Date(data.date).toLocaleString();
+
+        const itemsContainer = document.getElementById('rcptItems');
+        itemsContainer.innerHTML = data.items.map(i => `
+          <div class="d-flex justify-content-between">
+            <div>${i.product_name} x${i.quantity}</div>
+            <div>${formatKs(i.subtotal)}</div>
+          </div>
+        `).join('');
+
+        document.getElementById('rcptSubtotal').textContent = formatKs(data.subtotal);
+        document.getElementById('rcptTax').textContent = formatKs(data.tax);
+        document.getElementById('rcptTotal').textContent = formatKs(parseFloat(data.total));
+        document.getElementById('rcptPayment').textContent = data.payment_method === 'credit' ? 'Credit' : 'Cash';
+        
+        const balanceRow = document.getElementById('rcptBalanceRow');
+        if (data.payment_method === 'credit') {
+          balanceRow.classList.remove('d-none');
+          // Note: We don't have customer_balance in the API response, so we'll hide it for reprints
+          balanceRow.classList.add('d-none');
+        } else {
+          balanceRow.classList.add('d-none');
+        }
+      } catch (error) {
+        console.error(error);
+        alert('Error loading receipt.');
+      }
+    });
+  });
+
+  // Print Receipt
+  document.getElementById('printReceiptBtn').addEventListener('click', function() {
+    window.print();
+  });
+
+  // Delete Sale Confirmation
+  function confirmDeleteSale(saleId, deleteUrl) {
+    Swal.fire({
+      title: 'Are you sure?',
+      text: "This will delete the sale record and RETURN items to stock!",
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#d33',
+      cancelButtonColor: '#3085d6',
+      confirmButtonText: 'Yes, delete it!',
+      cancelButtonText: 'Cancel'
+    }).then((result) => {
+      if (result.isConfirmed) {
+        // Show loading toast
+        Toast.fire({
+          icon: 'info',
+          title: 'Deleting Sale...',
+          didOpen: () => {
+            Swal.showLoading();
+          },
+          timer: 0
+        });
+        
+        // Create a form to post to the delete route
+        const form = document.createElement('form');
+        form.method = 'POST';
+        // Replace the '0' placeholder in the URL with the actual sale ID
+        form.action = deleteUrl.replace('/0/delete', `/${saleId}/delete`);
+        document.body.appendChild(form);
+        form.submit();
+      }
+    });
+  }
+
+  // Return Items functionality
+  let currentSaleData = null;
+  
+  document.getElementById('returnItemsBtn').addEventListener('click', async function() {
+    const saleId = this.dataset.saleId;
+    const modal = new bootstrap.Modal(document.getElementById('returnItemsModal'));
+    const content = document.getElementById('returnItemsContent');
+    
+    try {
+      const response = await fetch(`/reports/sale/${saleId}`);
+      const data = await response.json();
+      
+      if (!response.ok) {
+        content.innerHTML = '<div class="alert alert-danger">Error loading sale details.</div>';
+        modal.show();
+        return;
+      }
+      
+      currentSaleData = data;
+      
+      // Build return form
+      const itemsHtml = data.items.map(item => {
+        const available = item.available_to_return;
+        if (available <= 0) {
+          return `
+            <tr class="table-secondary">
+              <td>${item.product_name}</td>
+              <td class="text-center">${item.quantity} (All returned)</td>
+              <td class="text-center">-</td>
+            </tr>
+          `;
+        }
+        return `
+          <tr>
+            <td>${item.product_name}</td>
+            <td class="text-center">${item.quantity} (${item.returned_quantity} returned, ${available} available)</td>
+            <td class="text-center">
+              <input type="number" class="form-control form-control-sm return-qty" 
+                     data-item-id="${item.sale_item_id}" 
+                     min="0" max="${available}" value="0" style="width: 80px;">
+            </td>
+          </tr>
+        `;
+      }).join('');
+      
+      content.innerHTML = `
+        <div class="alert alert-info">
+          <strong>Invoice #:</strong> ${data.invoice_no}<br>
+          <strong>Original Total:</strong> ${Number(data.total).toLocaleString()} Ks<br>
+          ${data.returned_amount > 0 ? `<strong>Already Returned:</strong> ${Number(data.returned_amount).toLocaleString()} Ks<br>` : ''}
+        </div>
+        <p class="mb-3">Select items and quantities to return:</p>
+        <div class="table-responsive">
+          <table class="table table-sm">
+            <thead>
+              <tr>
+                <th>Product</th>
+                <th class="text-center">Original Qty</th>
+                <th class="text-center">Return Qty</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${itemsHtml}
+            </tbody>
+          </table>
+        </div>
+        <div class="alert alert-warning mt-3">
+          <strong>Note:</strong> Stock will be added back and ${data.payment_method === 'cash' ? 'refund will be processed' : 'customer credit will be reduced'}.
+        </div>
+      `;
+      
+      modal.show();
+    } catch (error) {
+      console.error(error);
+      content.innerHTML = '<div class="alert alert-danger">Error loading sale details.</div>';
+      modal.show();
+    }
+  });
+  
+  document.getElementById('processReturnBtn').addEventListener('click', async function() {
+    if (!currentSaleData) {
+      alert('No sale data available');
+      return;
+    }
+    
+    const returnItems = [];
+    document.querySelectorAll('.return-qty').forEach(input => {
+      const qty = parseInt(input.value || 0);
+      if (qty > 0) {
+        returnItems.push({
+          sale_item_id: parseInt(input.dataset.itemId),
+          quantity: qty
+        });
+      }
+    });
+    
+    if (returnItems.length === 0) {
+      alert('Please select at least one item to return');
+      return;
+    }
+    
+    this.disabled = true;
+    this.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Processing...';
+    
+    try {
+      const response = await fetch(`/reports/sale/${currentSaleData.id}/return`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ return_items: returnItems })
+      });
+      
+      const data = await response.json();
+      
+      if (!response.ok) {
+        alert('Error: ' + (data.error || 'Return failed'));
+        this.disabled = false;
+        this.innerHTML = '<i class="fa fa-check me-1"></i>Process Return';
+        return;
+      }
+      
+      alert('✅ ' + data.message);
+      const modal = bootstrap.Modal.getInstance(document.getElementById('returnItemsModal'));
+      modal.hide();
+      
+      // Reload page to show updated status
+      window.location.reload();
+    } catch (error) {
+      console.error(error);
+      alert('Error processing return');
+      this.disabled = false;
+      this.innerHTML = '<i class="fa fa-check me-1"></i>Process Return';
+    }
+  });
+
+</script>
+
+<style>
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  #receipt, #receipt * {
+    visibility: visible;
+  }
+  #receipt {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 320px;
+  }
+}
+</style>
+{% endblock %}

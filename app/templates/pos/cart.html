@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+
+{% block title %}POS{% endblock %}
+
+{% block content %}
+  <h1>Point of Sale</h1>
+  <form method="post" action="{{ url_for('pos.checkout') }}">
+    <table>
+      <thead>
+        <tr>
+          <th>SKU</th>
+          <th>Name</th>
+          <th>Price</th>
+          <th>Qty</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for product in products %}
+          <tr>
+            <td>{{ product.sku }}</td>
+            <td>{{ product.name }}</td>
+            <td>{{ product.price }}</td>
+            <td>
+              <input type="hidden" name="product_id" value="{{ product.id }}">
+              <input type="number" name="quantity" min="0" value="0">
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <button type="submit">Checkout</button>
+  </form>
+{% endblock %}

@@ -1,0 +1,231 @@
+{% extends "base.html" %}
+
+{% block title %}Customers | Smart POS{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-0">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="mb-0">Customers</h4>
+    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addCustomerModal">
+      <i class="fa fa-user-plus me-1"></i>Add New Customer
+    </button>
+  </div>
+
+  <div class="card border-0 shadow-sm">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead class="table-light">
+            <tr>
+              <th>Name</th>
+              <th>Phone</th>
+              <th>Address</th>
+              <th class="text-end">Credit Balance</th>
+              <th class="text-end">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for c in customers %}
+            <tr>
+              <td>{{ c.name }}</td>
+              <td>{{ c.phone or "-" }}</td>
+              <td>{{ c.address or "-" }}</td>
+              <td class="text-end">
+                {% if c.credit_balance and c.credit_balance > 0 %}
+                  <span class="text-danger fw-semibold">{{ '{:,.0f} Ks'.format(c.credit_balance) }}</span>
+                {% else %}
+                  <span class="text-muted">{{ '{:,.0f} Ks'.format(c.credit_balance or 0) }}</span>
+                {% endif %}
+              </td>
+              <td class="text-end">
+                {% if c.credit_balance and c.credit_balance > 0 %}
+                <button class="btn btn-sm btn-success me-1" 
+                        onclick="openPayDebtModal({{ c.id }}, '{{ c.name }}', {{ c.credit_balance }})">
+                  <i class="fa fa-dollar-sign me-1"></i>Pay Debt
+                </button>
+                {% endif %}
+                <button class="btn btn-sm btn-outline-secondary me-1" data-bs-toggle="modal" data-bs-target="#editCustomerModal-{{ c.id }}">Edit</button>
+                <form method="post" action="{{ url_for('customers.delete', customer_id=c.id) }}" class="d-inline">
+                  <button type="submit" class="btn btn-sm btn-outline-danger" data-loading-text="Deleting Record..." onclick="return confirm('Delete this customer?')">Delete</button>
+                </form>
+              </td>
+            </tr>
+
+            <!-- Edit Modal -->
+            <div class="modal fade" id="editCustomerModal-{{ c.id }}" tabindex="-1" aria-hidden="true">
+              <div class="modal-dialog">
+                <div class="modal-content">
+                  <div class="modal-header">
+                    <h5 class="modal-title">Edit Customer</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                  </div>
+                  <form method="post" action="{{ url_for('customers.update', customer_id=c.id) }}">
+                    <div class="modal-body">
+                      <div class="mb-3">
+                        <label class="form-label">Name</label>
+                        <input type="text" name="name" class="form-control" value="{{ c.name }}" required>
+                      </div>
+                      <div class="mb-3">
+                        <label class="form-label">Phone</label>
+                        <input type="text" name="phone" class="form-control" value="{{ c.phone }}">
+                      </div>
+                      <div class="mb-3">
+                        <label class="form-label">Address</label>
+                        <textarea name="address" class="form-control" rows="2">{{ c.address }}</textarea>
+                      </div>
+                      <div class="mb-3">
+                        <label class="form-label">Credit Balance</label>
+                        <input type="number" step="0.01" name="credit_balance" class="form-control" value="{{ c.credit_balance or 0 }}">
+                      </div>
+                    </div>
+                    <div class="modal-footer">
+                      <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                      <button type="submit" class="btn btn-primary">Save</button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            </div>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Add Modal -->
+<div class="modal fade" id="addCustomerModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Add Customer</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="post" action="{{ url_for('customers.create') }}">
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">Name</label>
+            <input type="text" name="name" class="form-control" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Phone</label>
+            <input type="text" name="phone" class="form-control">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Address</label>
+            <textarea name="address" class="form-control" rows="2"></textarea>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Credit Balance</label>
+            <input type="number" step="0.01" name="credit_balance" class="form-control" value="0">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary">Add</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Pay Debt Modal -->
+<div class="modal fade" id="payDebtModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Receive Debt Payment</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="post" action="" id="payDebtForm">
+        <div class="modal-body">
+          <div class="alert alert-info">
+            <strong>Customer:</strong> <span id="payDebtCustomerName"></span><br>
+            <strong>Current Debt:</strong> <span id="payDebtCurrentDebt" class="fw-semibold text-danger"></span>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Amount <span class="text-danger">*</span></label>
+            <input type="number" 
+                   step="0.01" 
+                   name="amount" 
+                   id="payDebtAmount" 
+                   class="form-control" 
+                   required 
+                   min="0.01"
+                   placeholder="Enter payment amount">
+            <small class="text-muted">Maximum: <span id="payDebtMaxAmount"></span></small>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Payment Method <span class="text-danger">*</span></label>
+            <select name="payment_method" class="form-select" required>
+              <option value="cash">💵 Cash</option>
+              <option value="kpay">📱 KPay</option>
+              <option value="wavepay">🟨 WavePay</option>
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Note (Optional)</label>
+            <textarea name="note" class="form-control" rows="2" placeholder="Additional notes about this payment..."></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-success" data-loading-text="Processing Payment...">
+            <i class="fa fa-check me-1"></i>Confirm Payment
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+  function openPayDebtModal(customerId, customerName, currentDebt) {
+    // Update modal content
+    document.getElementById('payDebtCustomerName').textContent = customerName;
+    document.getElementById('payDebtCurrentDebt').textContent = formatKs(currentDebt);
+    document.getElementById('payDebtMaxAmount').textContent = formatKs(currentDebt);
+    
+    // Set form action URL
+    const form = document.getElementById('payDebtForm');
+    form.action = `{{ url_for('customers.pay_debt', customer_id=0) }}`.replace('/0', `/${customerId}`);
+    
+    // Reset form
+    form.reset();
+    document.getElementById('payDebtAmount').max = currentDebt;
+    document.getElementById('payDebtAmount').value = '';
+    
+    // Show modal
+    const modal = new bootstrap.Modal(document.getElementById('payDebtModal'));
+    modal.show();
+    
+    // Focus on amount input
+    setTimeout(() => {
+      document.getElementById('payDebtAmount').focus();
+    }, 500);
+  }
+  
+  // Format currency helper
+  function formatKs(value) {
+    return Number(value || 0).toLocaleString() + ' Ks';
+  }
+  
+  // Validate amount on input
+  document.getElementById('payDebtAmount')?.addEventListener('input', function() {
+    const maxAmount = parseFloat(this.max);
+    const enteredAmount = parseFloat(this.value) || 0;
+    
+    if (enteredAmount > maxAmount) {
+      this.setCustomValidity(`Amount cannot exceed ${formatKs(maxAmount)}`);
+      this.classList.add('is-invalid');
+    } else {
+      this.setCustomValidity('');
+      this.classList.remove('is-invalid');
+    }
+  });
+</script>
+{% endblock %}

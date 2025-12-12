@@ -1,0 +1,303 @@
+{% extends "base.html" %}
+
+{% block title %}Purchase History | Smart POS{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-0">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="mb-0">Purchase History</h4>
+    <a href="{{ url_for('purchases.new_purchase') }}" class="btn btn-success">
+      <i class="fa fa-plus me-1"></i>New Purchase
+    </a>
+  </div>
+  
+
+  <div class="card border-0 shadow-sm">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead class="table-light">
+            <tr>
+              <th>Date</th>
+              <th>Invoice ID</th>
+              <th>Supplier</th>
+              <th class="text-end">Total Amount</th>
+              <th class="text-center">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% if purchases %}
+              {% for purchase in purchases %}
+              <tr>
+                <td>{{ purchase.date.strftime('%Y-%m-%d %H:%M') }}</td>
+                <td><code>#{{ purchase.id }}</code></td>
+                <td>{{ purchase.supplier.name if purchase.supplier else 'Unknown' }}</td>
+                <td class="text-end fw-semibold">{{ "{:,.0f} Ks".format(purchase.total_amount or 0) }}</td>
+                <td class="text-center">
+                  <button class="btn btn-sm btn-outline-primary me-1 view-items" 
+                          data-purchase-id="{{ purchase.id }}">
+                    <i class="fa fa-eye"></i> View
+                  </button>
+                  <button class="btn btn-sm btn-outline-info me-1 print-purchase" 
+                          data-purchase-id="{{ purchase.id }}">
+                    <i class="fa fa-print"></i>
+                  </button>
+                  {% if current_user.has_permission('purchases_edit') or (current_user.role and current_user.role.name.lower() == 'admin') %}
+                  <a href="{{ url_for('purchases.edit_purchase', purchase_id=purchase.id) }}" 
+                     class="btn btn-sm btn-outline-secondary me-1">
+                    <i class="fa fa-edit"></i>
+                  </a>
+                  {% endif %}
+                  <form method="post" action="{{ url_for('purchases.delete_purchase', purchase_id=purchase.id) }}" class="d-inline">
+                    <button type="submit" class="btn btn-sm btn-outline-danger" data-loading-text="Deleting Record..." 
+                            onclick="return confirm('Void this purchase? Stock will be rolled back.')">
+                      <i class="fa fa-trash"></i>
+                    </button>
+                  </form>
+                </td>
+              </tr>
+              {% endfor %}
+            {% else %}
+              <tr>
+                <td colspan="5" class="text-center text-muted py-4">No purchases found.</td>
+              </tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- View Items Modal -->
+<div class="modal fade" id="viewItemsModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Purchase Items</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="itemsContent">
+        <div class="text-center">
+          <div class="spinner-border" role="status">
+            <span class="visually-hidden">Loading...</span>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- Print Modal -->
+<div class="modal fade" id="printPurchaseModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Purchase Invoice</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="printContent">
+        <div class="text-center">
+          <div class="spinner-border" role="status">
+            <span class="visually-hidden">Loading...</span>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+        <button type="button" class="btn btn-primary" id="printBtn">
+          <i class="fa fa-print me-1"></i>Print
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+  document.querySelectorAll('.view-items').forEach(btn => {
+    btn.addEventListener('click', async function() {
+      const purchaseId = this.dataset.purchaseId;
+      const modal = new bootstrap.Modal(document.getElementById('viewItemsModal'));
+      const content = document.getElementById('itemsContent');
+      
+      content.innerHTML = '<div class="text-center"><div class="spinner-border" role="status"><span class="visually-hidden">Loading...</span></div></div>';
+      modal.show();
+
+      try {
+        const response = await fetch(`/purchases/${purchaseId}/details`);
+        const data = await response.json();
+
+        if (!response.ok) {
+          content.innerHTML = '<div class="alert alert-danger">Error loading purchase details.</div>';
+          return;
+        }
+
+        const itemsHtml = data.items.map(item => `
+          <tr>
+            <td>${item.product_name}</td>
+            <td class="text-center">${item.quantity}</td>
+            <td class="text-end">${Number(item.cost_price).toLocaleString()} Ks</td>
+            <td class="text-end">${Number(item.subtotal).toLocaleString()} Ks</td>
+          </tr>
+        `).join('');
+
+        content.innerHTML = `
+          <div class="mb-3">
+            <div class="row">
+              <div class="col-md-6">
+                <strong>Purchase ID:</strong> <code>#${data.id}</code>
+              </div>
+              <div class="col-md-6">
+                <strong>Date:</strong> ${data.date}
+              </div>
+            </div>
+            <div class="row mt-2">
+              <div class="col-md-6">
+                <strong>Supplier:</strong> ${data.supplier}
+              </div>
+              <div class="col-md-6">
+                <strong>Total:</strong> <span class="fw-bold">${Number(data.total).toLocaleString()} Ks</span>
+              </div>
+            </div>
+          </div>
+          <hr>
+          <h6 class="mb-3">Items</h6>
+          <div class="table-responsive">
+            <table class="table table-sm">
+              <thead>
+                <tr>
+                  <th>Product</th>
+                  <th class="text-center">Quantity</th>
+                  <th class="text-end">Cost Price</th>
+                  <th class="text-end">Subtotal</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${itemsHtml}
+              </tbody>
+            </table>
+          </div>
+        `;
+      } catch (error) {
+        console.error(error);
+        content.innerHTML = '<div class="alert alert-danger">Error loading purchase details.</div>';
+      }
+    });
+  });
+
+  // Print Purchase
+  document.querySelectorAll('.print-purchase').forEach(btn => {
+    btn.addEventListener('click', async function() {
+      const purchaseId = this.dataset.purchaseId;
+      const modal = new bootstrap.Modal(document.getElementById('printPurchaseModal'));
+      const content = document.getElementById('printContent');
+      
+      content.innerHTML = '<div class="text-center"><div class="spinner-border" role="status"><span class="visually-hidden">Loading...</span></div></div>';
+      modal.show();
+
+      try {
+        const response = await fetch(`/purchases/${purchaseId}/details`);
+        const data = await response.json();
+
+        if (!response.ok) {
+          content.innerHTML = '<div class="alert alert-danger">Error loading purchase details.</div>';
+          return;
+        }
+
+        const itemsHtml = data.items.map(item => `
+          <tr>
+            <td>${item.product_name}</td>
+            <td class="text-center">${item.quantity}</td>
+            <td class="text-end">${Number(item.cost_price).toLocaleString()} Ks</td>
+            <td class="text-end">${Number(item.subtotal).toLocaleString()} Ks</td>
+          </tr>
+        `).join('');
+
+        const storeName = '{{ store.shop_name }}';
+        const storeAddress = '{{ store.address or "" }}';
+        const storePhone = '{{ store.phone or "" }}';
+        const storeFooter = '{{ store.receipt_footer }}';
+
+        content.innerHTML = `
+          <div id="printableContent" class="mx-auto" style="max-width: 400px;">
+            <div class="text-center mb-3">
+              <h5>${storeName}</h5>
+              ${storeAddress ? `<small>${storeAddress}</small><br>` : ''}
+              ${storePhone ? `<small>${storePhone}</small><br>` : ''}
+              <hr class="my-2" style="border-style: dashed;">
+              <div class="text-start">
+                <div><strong>Purchase Invoice #${data.id}</strong></div>
+                <div>Date: ${data.date}</div>
+                <div>Supplier: ${data.supplier}</div>
+              </div>
+              <hr class="my-2" style="border-style: dashed;">
+            </div>
+            <table class="table table-sm">
+              <thead>
+                <tr>
+                  <th>Product</th>
+                  <th class="text-center">Qty</th>
+                  <th class="text-end">Price</th>
+                  <th class="text-end">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${itemsHtml}
+              </tbody>
+            </table>
+            <hr class="my-2" style="border-style: dashed;">
+            <div class="text-end">
+              <div class="fs-5 fw-bold">Total: ${Number(data.total).toLocaleString()} Ks</div>
+            </div>
+            <div class="text-center mt-3">
+              <small class="text-muted">${storeFooter}</small>
+            </div>
+          </div>
+        `;
+      } catch (error) {
+        console.error(error);
+        content.innerHTML = '<div class="alert alert-danger">Error loading purchase details.</div>';
+      }
+    });
+  });
+
+  document.getElementById('printBtn').addEventListener('click', function() {
+    window.print();
+  });
+</script>
+
+<style>
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  #printableContent, #printableContent * {
+    visibility: visible;
+  }
+  #printableContent {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+  }
+  .modal {
+    position: absolute;
+    left: 0;
+    top: 0;
+    margin: 0;
+    padding: 0;
+  }
+  .modal-dialog {
+    max-width: 100%;
+    margin: 0;
+  }
+}
+</style>
+{% endblock %}

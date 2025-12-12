@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Print Labels</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      background: white !important;
+      color: black !important;
+      font-family: Arial, sans-serif;
+      padding: 10px;
+    }
+
+    /* Label Grid Layout */
+    .labels-container {
+      display: grid;
+      gap: 5px;
+      width: 100%;
+    }
+
+    /* Thermal 50x30mm */
+    .labels-container.thermal_50x30 {
+      grid-template-columns: repeat(2, 1fr);
+    }
+
+    .labels-container.thermal_50x30 .label {
+      width: 50mm;
+      height: 30mm;
+      border: 1px dashed #ccc;
+      padding: 3mm;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      align-items: center;
+      page-break-inside: avoid;
+    }
+
+    /* Continuous 58mm */
+    .labels-container.continuous {
+      grid-template-columns: 1fr;
+    }
+
+    .labels-container.continuous .label {
+      width: 58mm;
+      height: 25mm;
+      border-bottom: 1px dashed #ccc;
+      padding: 2mm;
+      display: flex;
+      flex-direction: row;
+      justify-content: space-between;
+      align-items: center;
+      page-break-inside: avoid;
+    }
+
+    /* A4 Grid (8 per page) */
+    .labels-container.a4_grid {
+      grid-template-columns: repeat(2, 1fr);
+      max-width: 210mm;
+      margin: 0 auto;
+    }
+
+    .labels-container.a4_grid .label {
+      width: 100mm;
+      height: 50mm;
+      border: 1px solid #ccc;
+      padding: 5mm;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      align-items: center;
+      page-break-inside: avoid;
+    }
+
+    /* Label Content */
+    .label {
+      font-size: 10px;
+      text-align: center;
+    }
+
+    .label .store-name {
+      font-size: 8px;
+      font-weight: bold;
+      margin-bottom: 2px;
+      color: #666;
+    }
+
+    .label .product-name {
+      font-size: 9px;
+      font-weight: bold;
+      margin-bottom: 3px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 100%;
+    }
+
+    .label .barcode-image {
+      max-width: 100%;
+      height: auto;
+      margin: 2px 0;
+    }
+
+    .label .barcode-number {
+      font-size: 7px;
+      font-family: monospace;
+      margin-top: 2px;
+      color: #666;
+    }
+
+    .label .price {
+      font-size: 10px;
+      font-weight: bold;
+      margin-top: 3px;
+      color: #000;
+    }
+
+    /* Continuous layout adjustments */
+    .labels-container.continuous .label {
+      text-align: left;
+    }
+
+    .labels-container.continuous .label-content {
+      flex: 1;
+    }
+
+    .labels-container.continuous .barcode-container {
+      margin-left: 10px;
+    }
+
+    /* Print Styles */
+    @media print {
+      body {
+        background: white !important;
+        color: black !important;
+      }
+
+      .labels-container {
+        page-break-after: auto;
+      }
+
+      .label {
+        page-break-inside: avoid;
+        break-inside: avoid;
+      }
+
+      @page {
+        size: auto;
+        margin: 5mm;
+      }
+
+      /* Thermal 50x30mm print */
+      .labels-container.thermal_50x30 {
+        width: 100mm; /* 2 labels × 50mm */
+      }
+
+      /* Continuous print */
+      .labels-container.continuous {
+        width: 58mm;
+      }
+
+      /* A4 print */
+      .labels-container.a4_grid {
+        width: 210mm;
+        height: 297mm;
+      }
+    }
+
+    /* Screen preview styles */
+    @media screen {
+      body {
+        background: #f5f5f5;
+      }
+
+      .labels-container {
+        background: white;
+        padding: 10px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="labels-container {{ paper_size }}">
+    {% for label in labels %}
+    <div class="label">
+      {% if paper_size == 'continuous' %}
+        <!-- Continuous Layout: Horizontal -->
+        <div class="label-content">
+          <div class="store-name">{{ store.shop_name }}</div>
+          <div class="product-name">{{ label.product.name }}</div>
+          <div class="price">{{ "{:,.0f} Ks".format(label.product.price or 0) }}</div>
+          <div class="barcode-number">{{ label.barcode_number }}</div>
+        </div>
+        <div class="barcode-container">
+          {% if label.barcode_image %}
+          <img src="{{ label.barcode_image }}" alt="Barcode" class="barcode-image">
+          {% else %}
+          <div style="width: 100px; height: 40px; border: 1px solid #ccc; display: flex; align-items: center; justify-content: center; font-size: 8px;">
+            Barcode Error
+          </div>
+          {% endif %}
+        </div>
+      {% else %}
+        <!-- Thermal 50x30mm / A4 Grid Layout: Vertical -->
+        <div class="store-name">{{ store.shop_name }}</div>
+        <div class="product-name">{{ label.product.name }}</div>
+        {% if label.barcode_image %}
+        <img src="{{ label.barcode_image }}" alt="Barcode" class="barcode-image">
+        {% else %}
+        <div style="width: 80px; height: 30px; border: 1px solid #ccc; display: flex; align-items: center; justify-content: center; font-size: 8px;">
+          Barcode Error
+        </div>
+        {% endif %}
+        <div class="barcode-number">{{ label.barcode_number }}</div>
+        <div class="price">{{ "{:,.0f} Ks".format(label.product.price or 0) }}</div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+
+  <script>
+    // Auto-print on load
+    window.onload = function() {
+      setTimeout(() => {
+        window.print();
+      }, 500);
+    };
+
+    // Close window after print (optional)
+    window.onafterprint = function() {
+      // Uncomment to auto-close after printing
+      // window.close();
+    };
+  </script>
+</body>
+</html>

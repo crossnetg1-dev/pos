@@ -1,0 +1,494 @@
+{% extends "base.html" %}
+
+{% block title %}Products | Smart POS{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-0">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="mb-0">Product List</h4>
+    <div class="btn-group">
+      <a href="{{ url_for('inventory.export_data') }}" class="btn btn-success">
+        <i class="fa fa-file-excel me-1"></i>Export Data
+      </a>
+      <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#importModal">
+        <i class="fa fa-upload me-1"></i>Import / Upload
+      </button>
+      <button class="btn btn-warning" data-bs-toggle="modal" data-bs-target="#adjustStockModal">
+        <i class="fa fa-exclamation-triangle me-1"></i>Report Damage/Loss
+      </button>
+      <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#addProductModal">
+        <i class="fa fa-plus me-1"></i>Add New Product
+      </button>
+    </div>
+  </div>
+
+  <div class="card border-0 shadow-sm">
+    <div class="card-body">
+      <div class="mb-3">
+        <div class="input-group">
+          <span class="input-group-text bg-white"><i class="fa fa-search"></i></span>
+          <input type="text" id="productSearch" class="form-control" placeholder="Search products by name or barcode...">
+        </div>
+      </div>
+
+      <div class="table-responsive">
+        <table class="table table-hover table-striped align-middle mb-0">
+          <thead class="table-light">
+            <tr>
+              <th style="width: 80px;">Image</th>
+              <th>Name</th>
+              <th>Barcode</th>
+              <th class="text-end">Price</th>
+              <th class="text-center">Stock</th>
+              <th class="text-end">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for product in products %}
+            <tr class="product-row" data-name="{{ product.name | lower }}" data-barcode="{{ product.barcode | lower }}">
+              <td>
+                <img src="{% if product.image_url %}{{ product.image_url }}{% elif product.image_file %}{{ url_for('static', filename='uploads/' + product.image_file) }}{% else %}https://via.placeholder.com/80x80?text=No+Image{% endif %}" 
+                     alt="{{ product.name }}" 
+                     class="img-thumbnail" 
+                     style="width: 50px; height: 50px; object-fit: cover;">
+              </td>
+              <td>
+                <div class="fw-semibold">{{ product.name }}</div>
+                {% if product.category %}
+                <small class="text-muted">
+                  {% if product.category.parent %}{{ product.category.parent.name }} > {% endif %}{{ product.category.name }}
+                </small>
+                {% endif %}
+                {% if product.unit %}
+                <div><small class="badge bg-secondary">{{ product.unit.short_name }}</small></div>
+                {% endif %}
+              </td>
+              <td><code>{{ product.barcode }}</code></td>
+              <td class="text-end">{{ "{:,.0f} Ks".format(product.price or 0) }}</td>
+              <td class="text-center">
+                <span class="badge {% if product.stock <= product.min_stock %}bg-danger{% elif product.stock <= product.min_stock * 2 %}bg-warning{% else %}bg-success{% endif %}">
+                  {{ product.stock }}
+                </span>
+                {% if product.stock <= product.min_stock %}
+                <div><small class="text-danger">Low Stock</small></div>
+                {% endif %}
+              </td>
+              <td class="text-end">
+                <button class="btn btn-sm btn-outline-primary me-1" 
+                        data-bs-toggle="modal" 
+                        data-bs-target="#editProductModal-{{ product.id }}">
+                  <i class="fa fa-edit"></i>
+                </button>
+                <form method="post" action="{{ url_for('inventory.delete_product', product_id=product.id) }}" class="d-inline">
+                  <button type="submit" class="btn btn-sm btn-outline-danger" data-loading-text="Deleting Record..." onclick="return confirm('Delete this product?')">
+                    <i class="fa fa-trash"></i>
+                  </button>
+                </form>
+              </td>
+            </tr>
+
+            <!-- Edit Modal -->
+            <div class="modal fade" id="editProductModal-{{ product.id }}" tabindex="-1" aria-hidden="true">
+              <div class="modal-dialog">
+                <div class="modal-content">
+                  <div class="modal-header">
+                    <h5 class="modal-title">Edit Product</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                  </div>
+                  <form method="post" action="{{ url_for('inventory.update_product', product_id=product.id) }}" enctype="multipart/form-data">
+                    <div class="modal-body">
+                      <div class="mb-3">
+                        <label class="form-label">Name <span class="text-danger">*</span></label>
+                        <input type="text" name="name" class="form-control" value="{{ product.name }}" required>
+                      </div>
+                      <div class="mb-3">
+                        <label class="form-label">Barcode <span class="text-danger">*</span></label>
+                        <input type="text" name="barcode" class="form-control" value="{{ product.barcode }}" required>
+                      </div>
+                      <div class="row">
+                        <div class="col-md-6 mb-3">
+                          <label class="form-label">Price <span class="text-danger">*</span></label>
+                          <input type="number" step="0.01" name="price" class="form-control" value="{{ product.price or 0 }}" required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                          <label class="form-label">Cost <span class="text-danger">*</span></label>
+                          <input type="number" step="0.01" name="cost" class="form-control" value="{{ product.cost or 0 }}" required>
+                        </div>
+                      </div>
+                      <div class="row">
+                        <div class="col-md-6 mb-3">
+                          <label class="form-label">Stock</label>
+                          <input type="number" step="1" name="stock" class="form-control" value="{{ product.stock or 0 }}">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                          <label class="form-label">Min Stock</label>
+                          <input type="number" step="1" name="min_stock" class="form-control" value="{{ product.min_stock or 0 }}">
+                        </div>
+                      </div>
+                      <div class="mb-3">
+                        <label class="form-label">Category</label>
+                        <select name="category_id" class="form-select">
+                          <option value="">No Category</option>
+                          {% for cat in categories %}
+                          <option value="{{ cat.id }}" {% if product.category_id == cat.id %}selected{% endif %}>
+                            {% if cat.parent_id %}&nbsp;&nbsp;└─ {% endif %}{{ cat.name }}
+                          </option>
+                          {% endfor %}
+                        </select>
+                      </div>
+                      <div class="mb-3">
+                        <label class="form-label">Unit</label>
+                        <select name="unit_id" class="form-select">
+                          <option value="">No Unit</option>
+                          {% for unit in units %}
+                          <option value="{{ unit.id }}" {% if product.unit_id == unit.id %}selected{% endif %}>
+                            {{ unit.name }} ({{ unit.short_name }})
+                          </option>
+                          {% endfor %}
+                        </select>
+                      </div>
+                      <div class="mb-3">
+                        <label class="form-label">Product Image</label>
+                        <ul class="nav nav-tabs mb-2" role="tablist">
+                          <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="edit-url-tab-{{ product.id }}" data-bs-toggle="tab" data-bs-target="#edit-url-pane-{{ product.id }}" type="button" role="tab">
+                              <i class="fa fa-link me-1"></i>Image URL
+                            </button>
+                          </li>
+                          <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="edit-file-tab-{{ product.id }}" data-bs-toggle="tab" data-bs-target="#edit-file-pane-{{ product.id }}" type="button" role="tab">
+                              <i class="fa fa-upload me-1"></i>Upload File
+                            </button>
+                          </li>
+                        </ul>
+                        <div class="tab-content">
+                          <div class="tab-pane fade show active" id="edit-url-pane-{{ product.id }}" role="tabpanel">
+                            <input type="url" name="image_url" id="editImageUrlInput-{{ product.id }}" class="form-control" 
+                                   value="{{ product.image_url or '' }}" placeholder="https://example.com/image.jpg">
+                            <small class="text-muted">Paste an image URL from the web</small>
+                          </div>
+                          <div class="tab-pane fade" id="edit-file-pane-{{ product.id }}" role="tabpanel">
+                            <input type="file" name="image" id="editImageFileInput-{{ product.id }}" class="form-control" accept="image/*">
+                            <small class="text-muted">Upload product image (PNG, JPG, JPEG, GIF, WEBP)</small>
+                          </div>
+                        </div>
+                        <div class="mt-3 text-center">
+                          <img id="editImagePreview-{{ product.id }}" 
+                               src="{% if product.image_url %}{{ product.image_url }}{% elif product.image_file %}{{ url_for('static', filename='uploads/' + product.image_file) }}{% else %}https://via.placeholder.com/200x200?text=No+Image{% endif %}" 
+                               class="img-thumbnail" style="max-width: 200px; max-height: 200px; object-fit: cover;">
+                        </div>
+                      </div>
+                      <hr>
+                      <div class="mb-3">
+                        <button type="button" class="btn btn-sm btn-outline-info" onclick="loadStockHistory({{ product.id }}, 'history-{{ product.id }}')">
+                          <i class="fa fa-history me-1"></i>View Stock History
+                        </button>
+                        <div id="history-{{ product.id }}" class="mt-2" style="display: none;">
+                          <div class="text-center">
+                            <div class="spinner-border spinner-border-sm" role="status">
+                              <span class="visually-hidden">Loading...</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="modal-footer">
+                      <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                      <button type="submit" class="btn btn-primary" data-loading-text="Saving Product...">Save Changes</button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            </div>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Add Product Modal -->
+<div class="modal fade" id="addProductModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Add New Product</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="post" action="{{ url_for('inventory.add_product') }}" enctype="multipart/form-data">
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">Name <span class="text-danger">*</span></label>
+            <input type="text" name="name" class="form-control" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Barcode <span class="text-danger">*</span></label>
+            <input type="text" name="barcode" class="form-control" required>
+          </div>
+          <div class="row">
+            <div class="col-md-6 mb-3">
+              <label class="form-label">Price <span class="text-danger">*</span></label>
+              <input type="number" step="0.01" name="price" class="form-control" required>
+            </div>
+            <div class="col-md-6 mb-3">
+              <label class="form-label">Cost <span class="text-danger">*</span></label>
+              <input type="number" step="0.01" name="cost" class="form-control" required>
+            </div>
+          </div>
+          <div class="row">
+            <div class="col-md-6 mb-3">
+              <label class="form-label">Stock</label>
+              <input type="number" step="1" name="stock" class="form-control" value="0">
+            </div>
+            <div class="col-md-6 mb-3">
+              <label class="form-label">Min Stock</label>
+              <input type="number" step="1" name="min_stock" class="form-control" value="0">
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Category</label>
+            <select name="category_id" class="form-select">
+              <option value="">No Category</option>
+              {% for cat in categories %}
+              <option value="{{ cat.id }}">
+                {% if cat.parent_id %}&nbsp;&nbsp;└─ {% endif %}{{ cat.name }}
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Unit</label>
+            <select name="unit_id" class="form-select">
+              <option value="">No Unit</option>
+              {% for unit in units %}
+              <option value="{{ unit.id }}">{{ unit.name }} ({{ unit.short_name }})</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Product Image</label>
+            <ul class="nav nav-tabs mb-2" role="tablist">
+              <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="url-tab" data-bs-toggle="tab" data-bs-target="#url-pane" type="button" role="tab">
+                  <i class="fa fa-link me-1"></i>Image URL
+                </button>
+              </li>
+              <li class="nav-item" role="presentation">
+                <button class="nav-link" id="file-tab" data-bs-toggle="tab" data-bs-target="#file-pane" type="button" role="tab">
+                  <i class="fa fa-upload me-1"></i>Upload File
+                </button>
+              </li>
+            </ul>
+            <div class="tab-content">
+              <div class="tab-pane fade show active" id="url-pane" role="tabpanel">
+                <input type="url" name="image_url" id="imageUrlInput" class="form-control" placeholder="https://example.com/image.jpg">
+                <small class="text-muted">Paste an image URL from the web</small>
+              </div>
+              <div class="tab-pane fade" id="file-pane" role="tabpanel">
+                <input type="file" name="image" id="imageFileInput" class="form-control" accept="image/*">
+                <small class="text-muted">Upload product image (PNG, JPG, JPEG, GIF, WEBP)</small>
+              </div>
+            </div>
+            <div class="mt-3 text-center">
+              <img id="imagePreview" src="https://via.placeholder.com/200x200?text=No+Image" 
+                   class="img-thumbnail" style="max-width: 200px; max-height: 200px; object-fit: cover; display: block;">
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-success" data-loading-text="Saving Product...">Add Product</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+  // Search functionality
+  document.getElementById('productSearch').addEventListener('input', function(e) {
+    const term = e.target.value.toLowerCase();
+    document.querySelectorAll('.product-row').forEach(row => {
+      const name = row.dataset.name;
+      const barcode = row.dataset.barcode;
+      const match = name.includes(term) || barcode.includes(term);
+      row.style.display = match ? '' : 'none';
+    });
+  });
+
+  // Load stock history
+  async function loadStockHistory(productId, containerId) {
+    const container = document.getElementById(containerId);
+    container.style.display = 'block';
+    
+    // Show loading
+    container.innerHTML = '<div class="text-center"><div class="spinner-border spinner-border-sm" role="status"><span class="visually-hidden">Loading...</span></div></div>';
+    
+    try {
+      const response = await fetch(`/inventory/history/${productId}`);
+      const data = await response.json();
+      
+      if (!response.ok) {
+        container.innerHTML = '<div class="alert alert-danger">Error loading history.</div>';
+        return;
+      }
+
+      if (data.history.length === 0) {
+        container.innerHTML = '<div class="text-muted small">No stock history available.</div>';
+        return;
+      }
+
+      // Clear "No stock history available" text and build table dynamically
+      const historyHtml = `
+        <div class="table-responsive">
+          <table class="table table-sm table-hover align-middle mb-0">
+            <thead class="table-light">
+              <tr>
+                <th>Date</th>
+                <th>Type</th>
+                <th class="text-end">Quantity</th>
+                <th>Reason</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${data.history.map(movement => `
+                <tr class="${movement.type === 'in' ? 'table-success' : 'table-danger'}">
+                  <td>${movement.date}</td>
+                  <td>
+                    <span class="badge ${movement.type === 'in' ? 'bg-success' : 'bg-danger'}">
+                      ${movement.type === 'in' ? 'IN' : 'OUT'}
+                    </span>
+                  </td>
+                  <td class="text-end fw-semibold">${movement.quantity}</td>
+                  <td>${movement.reason || '-'}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      `;
+      container.innerHTML = historyHtml;
+    } catch (error) {
+      console.error(error);
+      container.innerHTML = '<div class="alert alert-danger">Error loading history.</div>';
+    }
+  }
+
+  // Image Preview Functionality
+  function setupImagePreview(urlInputId, fileInputId, previewId) {
+    const urlInput = document.getElementById(urlInputId);
+    const fileInput = document.getElementById(fileInputId);
+    const preview = document.getElementById(previewId);
+    
+    if (!urlInput || !fileInput || !preview) return;
+    
+    // Handle URL input
+    urlInput.addEventListener('input', function() {
+      const url = this.value.trim();
+      if (url) {
+        preview.src = url;
+        preview.style.display = 'block';
+        fileInput.value = ''; // Clear file input
+      } else if (!fileInput.files || fileInput.files.length === 0) {
+        preview.style.display = 'none';
+      }
+    });
+    
+    // Handle file input
+    fileInput.addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          preview.src = e.target.result;
+          preview.style.display = 'block';
+          urlInput.value = ''; // Clear URL input
+        };
+        reader.readAsDataURL(file);
+      } else {
+        if (!urlInput.value.trim()) {
+          preview.style.display = 'none';
+        }
+      }
+    });
+  }
+  
+  // Setup preview for Add Product Modal
+  document.addEventListener('DOMContentLoaded', function() {
+    setupImagePreview('imageUrlInput', 'imageFileInput', 'imagePreview');
+    
+    // Setup preview for Edit Product Modals (when modals are opened)
+    document.querySelectorAll('[id^="editProductModal-"]').forEach(modal => {
+      const productId = modal.id.replace('editProductModal-', '');
+      modal.addEventListener('shown.bs.modal', function() {
+        setupImagePreview(
+          `editImageUrlInput-${productId}`,
+          `editImageFileInput-${productId}`,
+          `editImagePreview-${productId}`
+        );
+      });
+    });
+  });
+</script>
+
+<!-- Import Modal -->
+<div class="modal fade" id="importModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header bg-primary text-white">
+        <h5 class="modal-title">
+          <i class="fa fa-upload me-2"></i>Import Products from Excel
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="alert alert-info">
+          <strong>Step 1:</strong> Download the template first if you don't have it.
+        </div>
+        <div class="mb-3">
+          <a href="{{ url_for('inventory.export_template') }}" class="btn btn-outline-primary w-100">
+            <i class="fa fa-download me-1"></i>Download Template
+          </a>
+        </div>
+        
+        <hr>
+        
+        <div class="alert alert-info">
+          <strong>Step 2:</strong> Fill in your data and upload the file.
+        </div>
+        
+        <form method="POST" action="{{ url_for('inventory.import_data') }}" enctype="multipart/form-data">
+          <div class="mb-3">
+            <label class="form-label">Select Excel File (.xlsx or .xls)</label>
+            <input type="file" name="file" class="form-control" accept=".xlsx,.xls" required>
+            <small class="text-muted">Only Excel files are supported</small>
+          </div>
+          
+          <div class="alert alert-danger">
+            <strong><i class="fa fa-exclamation-triangle me-1"></i>Important Rules:</strong>
+            <ul class="mb-0 mt-2">
+              <li><strong>Name</strong>, <strong>Barcode</strong>, and <strong>Price</strong> are <strong>MANDATORY</strong>.</li>
+              <li><strong>Barcode</strong> must be unique.</li>
+              <li>If <strong>Barcode</strong> exists, the system will <strong>UPDATE</strong> the old product.</li>
+              <li>If <strong>Category</strong> doesn't exist, it will be <strong>created automatically</strong>.</li>
+              <li>If <strong>Unit</strong> doesn't exist, it will be <strong>created automatically</strong>.</li>
+            </ul>
+          </div>
+          
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+            <button type="submit" class="btn btn-primary" data-loading-text="Importing Products...">
+              <i class="fa fa-upload me-1"></i>Upload & Import
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}

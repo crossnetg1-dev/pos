@@ -1,0 +1,498 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard | Smart POS{% endblock %}
+
+{% block head %}
+<style>
+  .financial-card {
+    transition: transform 0.2s;
+  }
+  .financial-card:hover {
+    transform: translateY(-2px);
+  }
+  .trend-badge {
+    font-size: 0.75rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+  <div class="container-fluid px-0">
+    <!-- Row 1: Smart Summary Cards with Trends -->
+    <div class="row g-3 mb-4">
+      <div class="col-12 col-sm-6 col-lg-3">
+        <div class="card border-0 shadow-sm text-white financial-card" style="background:#3b82f6;">
+          <div class="card-body">
+            <div class="d-flex align-items-center justify-content-between">
+              <div>
+                <div class="small text-white-50 text-uppercase fw-semibold">Today's Sales</div>
+                <div class="fs-4 fw-bold">{{ "{:,.0f} Ks".format(today_sales_revenue or 0) }}</div>
+                {% if sales_growth_percent is defined %}
+                <div class="mt-2">
+                  {% if sales_growth_percent > 0 %}
+                  <span class="trend-badge bg-success bg-opacity-75">
+                    <i class="fa fa-arrow-up"></i> {{ "{:.1f}%".format(sales_growth_percent) }} from yesterday
+                  </span>
+                  {% elif sales_growth_percent < 0 %}
+                  <span class="trend-badge bg-danger bg-opacity-75">
+                    <i class="fa fa-arrow-down"></i> {{ "{:.1f}%".format(sales_growth_percent|abs) }} from yesterday
+                  </span>
+                  {% else %}
+                  <span class="trend-badge bg-secondary bg-opacity-75">
+                    <i class="fa fa-minus"></i> No change
+                  </span>
+                  {% endif %}
+                </div>
+                {% endif %}
+              </div>
+              <i class="fa fa-coins fa-2x opacity-75"></i>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="col-12 col-sm-6 col-lg-3">
+        <div class="card border-0 shadow-sm text-white financial-card" style="background:#6366f1;">
+          <div class="card-body">
+            <div class="d-flex align-items-center justify-content-between">
+              <div>
+                <div class="small text-white-50 text-uppercase fw-semibold">Monthly Sales</div>
+                <div class="fs-4 fw-bold">{{ "{:,.0f} Ks".format(monthly_sales_revenue or 0) }}</div>
+                <div class="mt-2">
+                  <span class="trend-badge bg-white bg-opacity-25">
+                    <i class="fa fa-calendar"></i> This Month
+                  </span>
+                </div>
+              </div>
+              <i class="fa fa-chart-bar fa-2x opacity-75"></i>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="col-12 col-sm-6 col-lg-3">
+        <div class="card border-0 shadow-sm text-white financial-card" style="background:#10b981;">
+          <div class="card-body">
+            <div class="d-flex align-items-center justify-content-between">
+              <div>
+                <div class="small text-white-50 text-uppercase fw-semibold">Today's Profit</div>
+                <div class="fs-4 fw-bold">{{ "{:,.0f} Ks".format(today_profit or 0) }}</div>
+                <div class="mt-2">
+                  <span class="trend-badge bg-white bg-opacity-25">
+                    <i class="fa fa-dollar-sign"></i> Estimated
+                  </span>
+                </div>
+              </div>
+              <i class="fa fa-chart-line fa-2x opacity-75"></i>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="col-12 col-sm-6 col-lg-3">
+        <div class="card border-0 shadow-sm text-white financial-card" style="background:#14b8a6;">
+          <div class="card-body">
+            <div class="d-flex align-items-center justify-content-between">
+              <div>
+                <div class="small text-white-50 text-uppercase fw-semibold">Monthly Profit</div>
+                <div class="fs-4 fw-bold">{{ "{:,.0f} Ks".format(monthly_profit or 0) }}</div>
+                <div class="mt-2">
+                  <span class="trend-badge bg-white bg-opacity-25">
+                    <i class="fa fa-trophy"></i> This Month
+                  </span>
+                </div>
+              </div>
+              <i class="fa fa-trophy fa-2x opacity-75"></i>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Row 2: Charts Section -->
+    <div class="row g-3 mb-4">
+      <!-- Sales Overview Line Chart (Left - 8 cols) -->
+      <div class="col-12 col-lg-8">
+        <div class="card shadow-sm border-0">
+          <div class="card-header bg-white d-flex justify-content-between align-items-center">
+            <h6 class="mb-0">Sales Overview (Last 7 Days)</h6>
+          </div>
+          <div class="card-body">
+            <canvas id="salesChart" height="120"></canvas>
+          </div>
+        </div>
+      </div>
+      <!-- Sales by Category Pie Chart (Right - 4 cols) -->
+      <div class="col-12 col-lg-4">
+        <div class="card shadow-sm border-0">
+          <div class="card-header bg-white d-flex justify-content-between align-items-center">
+            <h6 class="mb-0">Sales by Category (Today)</h6>
+          </div>
+          <div class="card-body">
+            {% if category_labels and category_quantities %}
+            <canvas id="categoryChart" height="200"></canvas>
+            {% else %}
+            <div class="text-center text-muted py-4">
+              <i class="fa fa-chart-pie fa-3x mb-2 opacity-25"></i>
+              <p>No sales today</p>
+            </div>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Row 3: Detailed Lists -->
+    <div class="row g-3 mb-4">
+      <!-- Top Customers (Left - 6 cols) -->
+      <div class="col-12 col-lg-6">
+        <div class="card shadow-sm border-0">
+          <div class="card-header bg-white d-flex justify-content-between align-items-center">
+            <h6 class="mb-0">Top Customers</h6>
+            <span class="badge bg-primary">{{ top_customers|length }}</span>
+          </div>
+          <div class="card-body p-0">
+            <div class="table-responsive">
+              <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                  <tr>
+                    <th>Name</th>
+                    <th>Phone</th>
+                    <th class="text-end">Total Spent</th>
+                    <th>Last Visit</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% if top_customers %}
+                    {% for customer in top_customers %}
+                    <tr>
+                      <td><strong>{{ customer.name }}</strong></td>
+                      <td><small class="text-muted">{{ customer.phone }}</small></td>
+                      <td class="text-end fw-semibold">{{ "{:,.0f} Ks".format(customer.total_spent) }}</td>
+                      <td><small>{{ customer.last_visit }}</small></td>
+                    </tr>
+                    {% endfor %}
+                  {% else %}
+                    <tr>
+                      <td colspan="4" class="text-center text-muted py-4">No customer data available</td>
+                    </tr>
+                  {% endif %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- Low Stock Alert (Right - 6 cols) -->
+      <div class="col-12 col-lg-6">
+        <div class="card shadow-sm border-0">
+          <div class="card-header bg-white d-flex justify-content-between align-items-center">
+            <h6 class="mb-0">Low Stock Alert</h6>
+            <span class="badge bg-danger">{{ critical_stock|length }}</span>
+          </div>
+          <div class="card-body p-0">
+            <div class="table-responsive">
+              <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                  <tr>
+                    <th>Product Name</th>
+                    <th class="text-center">Current Stock</th>
+                    <th class="text-center">Min Stock</th>
+                    <th class="text-center">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% if critical_stock %}
+                    {% for product in critical_stock %}
+                    <tr>
+                      <td><strong>{{ product.name }}</strong></td>
+                      <td class="text-center fw-semibold">{{ product.stock }}</td>
+                      <td class="text-center text-muted">{{ product.min_stock }}</td>
+                      <td class="text-center">
+                        {% if product.status == 'Critical' %}
+                        <span class="badge bg-danger">Critical</span>
+                        {% else %}
+                        <span class="badge bg-warning">Low</span>
+                        {% endif %}
+                      </td>
+                    </tr>
+                    {% endfor %}
+                  {% else %}
+                    <tr>
+                      <td colspan="4" class="text-center text-muted py-4">
+                        <i class="fa fa-check-circle text-success"></i> All products are well stocked
+                      </td>
+                    </tr>
+                  {% endif %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Row 4: Payment Analysis & Loss Tracking -->
+    <div class="row g-3 mb-4">
+      <div class="col-12 col-lg-4">
+        <div class="card shadow-sm border-0">
+          <div class="card-header bg-white d-flex justify-content-between align-items-center">
+            <h6 class="mb-0">Payment Method Breakdown (Today)</h6>
+          </div>
+          <div class="card-body">
+            {% if payment_labels and payment_counts %}
+            <canvas id="paymentChart" height="200"></canvas>
+            {% else %}
+            <div class="text-center text-muted py-4">
+              <i class="fa fa-credit-card fa-3x mb-2 opacity-25"></i>
+              <p>No payments today</p>
+            </div>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+      <!-- Returns & Losses -->
+      <div class="col-12 col-lg-4">
+        <div class="card shadow-sm border-0 border-warning">
+          <div class="card-header bg-white">
+            <h6 class="mb-0">
+              <i class="fa fa-undo me-2 text-warning"></i>Total Returns
+            </h6>
+          </div>
+          <div class="card-body text-center">
+            <div class="fs-3 fw-bold text-warning">{{ "{:,.0f} Ks".format(total_returns or 0) }}</div>
+            <small class="text-muted">All-time refunded amount</small>
+          </div>
+        </div>
+      </div>
+      <div class="col-12 col-lg-4">
+        <div class="card shadow-sm border-0 border-danger">
+          <div class="card-header bg-white">
+            <h6 class="mb-0">
+              <i class="fa fa-exclamation-triangle me-2 text-danger"></i>Damaged/Lost Value
+            </h6>
+          </div>
+          <div class="card-body text-center">
+            <div class="fs-3 fw-bold text-danger">{{ "{:,.0f} Ks".format(damaged_value or 0) }}</div>
+            <small class="text-muted">{{ damaged_losses }} units lost</small>
+          </div>
+        </div>
+      </div>
+      <!-- Recent Transactions -->
+      <div class="col-12 col-lg-6">
+        <div class="card shadow-sm border-0">
+          <div class="card-header bg-white d-flex justify-content-between align-items-center">
+            <h6 class="mb-0">Recent Transactions</h6>
+          </div>
+          <div class="card-body p-0">
+            <div class="table-responsive">
+              <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                  <tr>
+                    <th scope="col">Invoice</th>
+                    <th scope="col">Customer</th>
+                    <th scope="col">Date</th>
+                    <th scope="col">Total</th>
+                    <th scope="col">Payment</th>
+                    <th scope="col">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% if recent_sales %}
+                    {% for sale in recent_sales %}
+                    <tr>
+                      <td><code>{{ sale.invoice_no }}</code></td>
+                      <td>{{ sale.customer.name if sale.customer else 'Walk-in Customer' }}</td>
+                      <td><small>{{ sale.date.strftime('%Y-%m-%d %H:%M') }}</small></td>
+                      <td class="fw-semibold">{{ "{:,.0f} Ks".format(sale.total_amount or 0) }}</td>
+                      <td>
+                        <span class="badge {% if sale.payment_method == 'cash' %}bg-success{% else %}bg-warning{% endif %}">
+                          {{ sale.payment_method|title }}
+                        </span>
+                      </td>
+                      <td><span class="badge bg-success">Completed</span></td>
+                    </tr>
+                    {% endfor %}
+                  {% else %}
+                    <tr>
+                      <td colspan="6" class="text-center text-muted py-4">No transactions yet.</td>
+                    </tr>
+                  {% endif %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+  // Sales Overview Line Chart
+  const ctx = document.getElementById('salesChart');
+  if (ctx) {
+    const dates = {{ dates | tojson }};
+    const salesData = {{ sales_data | tojson }};
+
+    new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: dates,
+        datasets: [{
+          label: 'Daily Sales',
+          data: salesData,
+          borderColor: '#3b82f6',
+          backgroundColor: 'rgba(59, 130, 246, 0.1)',
+          tension: 0.4,
+          fill: true,
+          borderWidth: 2,
+          pointRadius: 4,
+          pointBackgroundColor: '#3b82f6',
+          pointBorderColor: '#ffffff',
+          pointBorderWidth: 2
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: true,
+        plugins: {
+          legend: {
+            display: true,
+            position: 'top'
+          },
+          tooltip: {
+            callbacks: {
+              label: function(context) {
+                return 'Sales: ' + Number(context.parsed.y).toLocaleString() + ' Ks';
+              }
+            }
+          }
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            ticks: {
+              callback: function(value) {
+                return Number(value).toLocaleString() + ' Ks';
+              }
+            },
+            grid: {
+              color: 'rgba(0, 0, 0, 0.05)'
+            }
+          },
+          x: {
+            grid: {
+              display: false
+            }
+          }
+        }
+      }
+    });
+  }
+
+  // Category Sales Pie Chart
+  const categoryCtx = document.getElementById('categoryChart');
+  if (categoryCtx) {
+    const categoryLabels = {{ category_labels | tojson }};
+    const categoryQuantities = {{ category_quantities | tojson }};
+    
+    // Color palette for categories
+    const categoryColors = [
+      '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6',
+      '#06b6d4', '#ec4899', '#84cc16', '#f97316', '#6366f1'
+    ];
+
+    new Chart(categoryCtx, {
+      type: 'pie',
+      data: {
+        labels: categoryLabels,
+        datasets: [{
+          data: categoryQuantities,
+          backgroundColor: categoryColors.slice(0, categoryLabels.length),
+          borderWidth: 2,
+          borderColor: '#ffffff'
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: true,
+        plugins: {
+          legend: {
+            display: true,
+            position: 'bottom'
+          },
+          tooltip: {
+            callbacks: {
+              label: function(context) {
+                const label = context.label || '';
+                const value = context.parsed || 0;
+                const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                const percentage = ((value / total) * 100).toFixed(1);
+                return label + ': ' + value + ' units (' + percentage + '%)';
+              }
+            }
+          }
+        }
+      }
+    });
+  }
+
+  // Payment Method Doughnut Chart
+  const paymentCtx = document.getElementById('paymentChart');
+  if (paymentCtx) {
+    const paymentLabels = {{ payment_labels | tojson }};
+    const paymentCounts = {{ payment_counts | tojson }};
+    
+    // Color mapping for payment methods
+    const paymentColors = {
+      'cash': '#10b981',
+      'credit': '#f59e0b',
+      'kbzpay': '#3b82f6',
+      'wavepay': '#8b5cf6',
+      'ayapay': '#ef4444'
+    };
+    
+    const colors = paymentLabels.map(label => {
+      const lower = label.toLowerCase();
+      return paymentColors[lower] || '#6b7280';
+    });
+
+    new Chart(paymentCtx, {
+      type: 'doughnut',
+      data: {
+        labels: paymentLabels.map(l => l.charAt(0).toUpperCase() + l.slice(1)),
+        datasets: [{
+          data: paymentCounts,
+          backgroundColor: colors,
+          borderWidth: 2,
+          borderColor: '#ffffff'
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: true,
+        plugins: {
+          legend: {
+            display: true,
+            position: 'bottom'
+          },
+          tooltip: {
+            callbacks: {
+              label: function(context) {
+                const label = context.label || '';
+                const value = context.parsed || 0;
+                const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                const percentage = ((value / total) * 100).toFixed(1);
+                return label + ': ' + value + ' transactions (' + percentage + '%)';
+              }
+            }
+          }
+        }
+      }
+    });
+  }
+</script>
+{% endblock %}
