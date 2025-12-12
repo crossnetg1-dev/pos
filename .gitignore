@@ -1,25 +1,21 @@
 # Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-
-# Virtual Environment
 venv/
-env/
-ENV/
-.venv
-
-# Flask
-instance/
-.webassets-cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
 
 # Database
 *.db
 *.sqlite
 *.sqlite3
-*.db.bak
+instance/
 
 # Environment variables
 .env
@@ -34,18 +30,18 @@ instance/
 
 # OS
 .DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
 Thumbs.db
+desktop.ini
 
-# Logs
+# Uploads (user-uploaded files)
+app/static/uploads/
+logs/
 *.log
 
-# Uploads (optional - you may want to keep some)
-# app/static/uploads/
+# Docker
+.dockerignore
 
-# Migrations (optional - you may want to keep these)
-# migrations/
+# Temporary files
+*.tmp
+*.bak
+*.cache

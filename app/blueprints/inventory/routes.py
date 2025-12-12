@@ -6,12 +6,16 @@ from flask_login import current_user, login_required
 from werkzeug.utils import secure_filename
 import pandas as pd
 from datetime import datetime
+import pytz
 import barcode
 from barcode.writer import ImageWriter
 
 from app import db
 from app.models import Category, Product, StockMovement, Unit
 from app.utils import log_stock_movement, permission_required
+
+# Timezone configuration
+MYANMAR_TZ = pytz.timezone('Asia/Yangon')
 
 inventory_bp = Blueprint("inventory", __name__, url_prefix="/inventory")
 
@@ -82,10 +86,29 @@ def products():
 def add_product():
     name = request.form.get("name", "").strip()
     barcode = request.form.get("barcode", "").strip()
-    price = request.form.get("price", 0)
-    cost = request.form.get("cost", 0)
-    stock = request.form.get("stock", 0)
-    min_stock = request.form.get("min_stock", 0)
+    try:
+        price = float(request.form.get("price", 0) or 0)
+        cost = float(request.form.get("cost", 0) or 0)
+        stock = int(request.form.get("stock", 0) or 0)
+        min_stock = int(request.form.get("min_stock", 0) or 0)
+    except (ValueError, TypeError):
+        flash("Invalid numeric values for price, cost, stock, or min_stock.", "danger")
+        return redirect(url_for("inventory.products"))
+    
+    # Validation: Ensure price, cost, and stock are not negative
+    if price < 0:
+        flash("Price cannot be negative.", "danger")
+        return redirect(url_for("inventory.products"))
+    if cost < 0:
+        flash("Cost cannot be negative.", "danger")
+        return redirect(url_for("inventory.products"))
+    if stock < 0:
+        flash("Stock cannot be negative.", "danger")
+        return redirect(url_for("inventory.products"))
+    if min_stock < 0:
+        flash("Minimum stock cannot be negative.", "danger")
+        return redirect(url_for("inventory.products"))
+    
     if not name or not barcode:
         flash("Name and barcode are required.", "warning")
         return redirect(url_for("inventory.products"))
@@ -156,12 +179,36 @@ def update_product(product_id: int):
     old_cost = product.cost
     old_stock = product.stock
 
+    # Validate and convert numeric inputs
+    try:
+        new_price = float(request.form.get("price", product.price) or product.price)
+        new_cost = float(request.form.get("cost", product.cost) or product.cost)
+        new_stock = int(request.form.get("stock", product.stock) or product.stock)
+        new_min_stock = int(request.form.get("min_stock", product.min_stock) or product.min_stock)
+    except (ValueError, TypeError):
+        flash("Invalid numeric values for price, cost, stock, or min_stock.", "danger")
+        return redirect(url_for("inventory.products"))
+    
+    # Validation: Ensure price, cost, and stock are not negative
+    if new_price < 0:
+        flash("Price cannot be negative.", "danger")
+        return redirect(url_for("inventory.products"))
+    if new_cost < 0:
+        flash("Cost cannot be negative.", "danger")
+        return redirect(url_for("inventory.products"))
+    if new_stock < 0:
+        flash("Stock cannot be negative.", "danger")
+        return redirect(url_for("inventory.products"))
+    if new_min_stock < 0:
+        flash("Minimum stock cannot be negative.", "danger")
+        return redirect(url_for("inventory.products"))
+
     product.name = request.form.get("name", product.name).strip()
     product.barcode = request.form.get("barcode", product.barcode).strip()
-    product.price = request.form.get("price", product.price) or product.price
-    product.cost = request.form.get("cost", product.cost) or product.cost
-    product.stock = request.form.get("stock", product.stock) or product.stock
-    product.min_stock = request.form.get("min_stock", product.min_stock) or product.min_stock
+    product.price = new_price
+    product.cost = new_cost
+    product.stock = new_stock
+    product.min_stock = new_min_stock
     category_id = request.form.get("category_id")
     product.category_id = int(category_id) if category_id else None
     unit_id = request.form.get("unit_id")

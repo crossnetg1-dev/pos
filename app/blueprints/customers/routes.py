@@ -25,11 +25,23 @@ def create():
     name = request.form.get("name", "").strip()
     phone = request.form.get("phone", "").strip()
     address = request.form.get("address", "").strip()
-    credit_balance = request.form.get("credit_balance", 0) or 0
+    
+    try:
+        credit_balance = float(request.form.get("credit_balance", 0) or 0)
+    except (ValueError, TypeError):
+        flash("Invalid credit balance value.", "danger")
+        return redirect(url_for("customers.index"))
 
     if not name:
         flash("Name is required.", "warning")
         return redirect(url_for("customers.index"))
+    
+    # Prevent duplicate phone numbers if phone is provided
+    if phone:
+        existing = Customer.query.filter_by(phone=phone).first()
+        if existing:
+            flash(f"Customer with phone number {phone} already exists.", "danger")
+            return redirect(url_for("customers.index"))
 
     customer = Customer(
         name=name,
@@ -52,10 +64,27 @@ def update(customer_id: int):
         flash("Customer not found.", "danger")
         return redirect(url_for("customers.index"))
 
-    customer.name = request.form.get("name", customer.name).strip()
-    customer.phone = request.form.get("phone", customer.phone).strip()
-    customer.address = request.form.get("address", customer.address).strip()
-    customer.credit_balance = request.form.get("credit_balance", customer.credit_balance) or customer.credit_balance
+    new_name = request.form.get("name", customer.name).strip()
+    new_phone = request.form.get("phone", customer.phone).strip()
+    new_address = request.form.get("address", customer.address).strip()
+    
+    try:
+        new_credit_balance = float(request.form.get("credit_balance", customer.credit_balance) or customer.credit_balance)
+    except (ValueError, TypeError):
+        flash("Invalid credit balance value.", "danger")
+        return redirect(url_for("customers.index"))
+    
+    # Prevent duplicate phone numbers if phone is provided and changed
+    if new_phone and new_phone != customer.phone:
+        existing = Customer.query.filter_by(phone=new_phone).first()
+        if existing:
+            flash(f"Customer with phone number {new_phone} already exists.", "danger")
+            return redirect(url_for("customers.index"))
+
+    customer.name = new_name
+    customer.phone = new_phone
+    customer.address = new_address
+    customer.credit_balance = new_credit_balance
     db.session.commit()
     flash("Customer updated.", "success")
     return redirect(url_for("customers.index"))

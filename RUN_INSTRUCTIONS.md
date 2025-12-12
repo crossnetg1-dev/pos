@@ -1,4 +1,4 @@
-# Smart POS - Quick Start Guide
+# Cid-POS - Quick Start Guide
 
 This project includes automation scripts to make it portable between Windows and Linux systems.
 

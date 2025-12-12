@@ -1,11 +1,13 @@
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
+
+import pytz
 
 from flask import Blueprint, render_template
 from flask_login import login_required
 from sqlalchemy import func
 
 from app import db
-from app.models import Category, Customer, Product, Sale, SaleItem
+from app.models import AuditLog, Category, Customer, Product, Sale, SaleItem
 from app.utils import permission_required
 
 main_bp = Blueprint("main", __name__)
@@ -15,28 +17,50 @@ main_bp = Blueprint("main", __name__)
 @login_required
 @permission_required('dashboard_view')
 def dashboard():
-    today = date.today()
+    # Use Myanmar timezone (Asia/Yangon)
+    myanmar_tz = pytz.timezone('Asia/Yangon')
+    now_myanmar = datetime.now(myanmar_tz)
+    today = now_myanmar.date()
     month_start = date(today.year, today.month, 1)
+    
+    # Calculate start and end of today in Myanmar timezone (convert to UTC for DB comparison)
+    today_start_myanmar = myanmar_tz.localize(datetime.combine(today, time.min))
+    today_end_myanmar = myanmar_tz.localize(datetime.combine(today, time.max))
+    today_start_utc = today_start_myanmar.astimezone(pytz.UTC).replace(tzinfo=None)
+    today_end_utc = today_end_myanmar.astimezone(pytz.UTC).replace(tzinfo=None)
+    
+    # Calculate start of month in Myanmar timezone
+    month_start_myanmar = myanmar_tz.localize(datetime.combine(month_start, time.min))
+    month_start_utc = month_start_myanmar.astimezone(pytz.UTC).replace(tzinfo=None)
 
-    # Today's Sales (Total revenue for current day)
+    # Today's Sales (Total revenue for current day in Myanmar timezone)
     today_sales_revenue = (
         db.session.query(func.sum(Sale.total_amount))
-        .filter(func.date(Sale.date) == today)
+        .filter(Sale.date >= today_start_utc)
+        .filter(Sale.date < today_end_utc)
         .scalar()
         or 0
     )
+    # Convert Decimal to float for arithmetic operations
+    today_sales_revenue = float(today_sales_revenue or 0)
 
     # Monthly Sales (Total revenue for current month, 1st to now)
     monthly_sales_revenue = (
         db.session.query(func.sum(Sale.total_amount))
-        .filter(func.date(Sale.date) >= month_start)
-        .filter(func.date(Sale.date) <= today)
+        .filter(Sale.date >= month_start_utc)
+        .filter(Sale.date < today_end_utc)
         .scalar()
         or 0
     )
+    # Convert Decimal to float
+    monthly_sales_revenue = float(monthly_sales_revenue or 0)
 
     # Today's Profit: (selling price - cost price) * quantity for items sold today
-    today_sales = Sale.query.filter(func.date(Sale.date) == today).all()
+    today_sales = (
+        Sale.query.filter(Sale.date >= today_start_utc)
+        .filter(Sale.date < today_end_utc)
+        .all()
+    )
     today_profit = 0.0
     for sale in today_sales:
         for item in sale.items:
@@ -49,8 +73,8 @@ def dashboard():
 
     # Monthly Profit: (selling price - cost price) * quantity for items sold this month
     monthly_sales = (
-        Sale.query.filter(func.date(Sale.date) >= month_start)
-        .filter(func.date(Sale.date) <= today)
+        Sale.query.filter(Sale.date >= month_start_utc)
+        .filter(Sale.date < today_end_utc)
         .all()
     )
     monthly_profit = 0.0
@@ -64,6 +88,7 @@ def dashboard():
                 monthly_profit += profit_per_item
 
     # Top 5 Best Selling Products (based on quantity sold this month)
+    # Use timezone-aware UTC ranges for consistency with other dashboard queries
     top_products_query = (
         db.session.query(
             Product.id,
@@ -72,8 +97,8 @@ def dashboard():
         )
         .join(SaleItem, Product.id == SaleItem.product_id)
         .join(Sale, SaleItem.sale_id == Sale.id)
-        .filter(func.date(Sale.date) >= month_start)
-        .filter(func.date(Sale.date) <= today)
+        .filter(Sale.date >= month_start_utc)
+        .filter(Sale.date < today_end_utc)
         .group_by(Product.id, Product.name)
         .order_by(func.sum(SaleItem.quantity).desc())
         .limit(5)
@@ -87,7 +112,8 @@ def dashboard():
     # Legacy metrics (keeping for compatibility)
     today_orders = (
         db.session.query(func.count(Sale.id))
-        .filter(func.date(Sale.date) == today)
+        .filter(Sale.date >= today_start_utc)
+        .filter(Sale.date < today_end_utc)
         .scalar()
         or 0
     )
@@ -110,9 +136,15 @@ def dashboard():
     sales_data = []
     for i in range(6, -1, -1):  # Last 7 days (6 days ago to today)
         day = today - timedelta(days=i)
+        day_start_myanmar = myanmar_tz.localize(datetime.combine(day, datetime.min.time()))
+        day_end_myanmar = myanmar_tz.localize(datetime.combine(day, datetime.max.time()))
+        day_start_utc = day_start_myanmar.astimezone(pytz.UTC).replace(tzinfo=None)
+        day_end_utc = day_end_myanmar.astimezone(pytz.UTC).replace(tzinfo=None)
+        
         day_sales = (
             db.session.query(func.sum(Sale.total_amount))
-            .filter(func.date(Sale.date) == day)
+            .filter(Sale.date >= day_start_utc)
+            .filter(Sale.date < day_end_utc)
             .scalar()
             or 0
         )
@@ -123,14 +155,22 @@ def dashboard():
 
     # Sales Growth: Compare Today vs Yesterday
     yesterday = today - timedelta(days=1)
+    yesterday_start_myanmar = myanmar_tz.localize(datetime.combine(yesterday, time.min))
+    yesterday_end_myanmar = myanmar_tz.localize(datetime.combine(yesterday, time.max))
+    yesterday_start_utc = yesterday_start_myanmar.astimezone(pytz.UTC).replace(tzinfo=None)
+    yesterday_end_utc = yesterday_end_myanmar.astimezone(pytz.UTC).replace(tzinfo=None)
+    
     yesterday_sales_revenue = (
         db.session.query(func.sum(Sale.total_amount))
-        .filter(func.date(Sale.date) == yesterday)
+        .filter(Sale.date >= yesterday_start_utc)
+        .filter(Sale.date < yesterday_end_utc)
         .scalar()
         or 0
     )
+    # Convert Decimal to float
     yesterday_sales_revenue = float(yesterday_sales_revenue or 0)
     
+    # Calculate sales growth (both values are now float)
     sales_growth_percent = 0.0
     if yesterday_sales_revenue > 0:
         sales_growth_percent = ((today_sales_revenue - yesterday_sales_revenue) / yesterday_sales_revenue) * 100
@@ -146,7 +186,8 @@ def dashboard():
         .join(Product, Category.id == Product.category_id)
         .join(SaleItem, Product.id == SaleItem.product_id)
         .join(Sale, SaleItem.sale_id == Sale.id)
-        .filter(func.date(Sale.date) == today)
+        .filter(Sale.date >= today_start_utc)
+        .filter(Sale.date < today_end_utc)
         .group_by(Category.id, Category.name)
         .all()
     )
@@ -163,7 +204,8 @@ def dashboard():
             Sale.payment_method,
             func.count(Sale.id).label('count')
         )
-        .filter(func.date(Sale.date) == today)
+        .filter(Sale.date >= today_start_utc)
+        .filter(Sale.date < today_end_utc)
         .group_by(Sale.payment_method)
         .all()
     )
@@ -225,6 +267,8 @@ def dashboard():
         .scalar()
         or 0
     )
+    # Convert Decimal to float
+    total_returns = float(total_returns or 0)
     
     # Total Damaged/Lost (from stock movements)
     damaged_losses = (
@@ -259,10 +303,62 @@ def dashboard():
         if movement.product:
             damaged_value += float(movement.product.cost or 0) * movement.quantity
 
+    # Total Inventory Value: Sum(Product.stock * Product.cost)
+    total_inventory_value = (
+        db.session.query(func.sum(Product.stock * Product.cost))
+        .scalar()
+        or 0
+    )
+    # Convert Decimal to float
+    total_inventory_value = float(total_inventory_value or 0)
+
+    # Calculate Net Profit (Gross Profit - Expenses)
+    # Note: Currently no Expense model, so showing Gross Profit
+    # Structure is ready for expenses when added
+    today_expenses = 0.0  # Placeholder for future Expense model
+    monthly_expenses = 0.0  # Placeholder for future Expense model
+    
+    net_profit_today = today_profit - today_expenses
+    net_profit_monthly = monthly_profit - monthly_expenses
+
+    # Recent Activity Feed: Last 5 AuditLog entries
+    recent_activities = (
+        AuditLog.query.order_by(AuditLog.timestamp.desc())
+        .limit(5)
+        .all()
+    )
+    
+    # Format activities for display
+    activity_list = []
+    for activity in recent_activities:
+        # Calculate time ago
+        # activity.timestamp is naive UTC from database, so localize as UTC first, then convert to Myanmar timezone
+        activity_timestamp_utc = pytz.UTC.localize(activity.timestamp) if activity.timestamp.tzinfo is None else activity.timestamp
+        activity_timestamp_myanmar = activity_timestamp_utc.astimezone(myanmar_tz)
+        time_diff = datetime.now(myanmar_tz) - activity_timestamp_myanmar
+        if time_diff.total_seconds() < 60:
+            time_ago = f"{int(time_diff.total_seconds())} secs ago"
+        elif time_diff.total_seconds() < 3600:
+            time_ago = f"{int(time_diff.total_seconds() / 60)} mins ago"
+        elif time_diff.total_seconds() < 86400:
+            time_ago = f"{int(time_diff.total_seconds() / 3600)} hrs ago"
+        else:
+            time_ago = f"{int(time_diff.total_seconds() / 86400)} days ago"
+        
+        user_name = activity.user.username if activity.user else "System"
+        activity_list.append({
+            "user": user_name,
+            "action": activity.action,
+            "details": activity.details or "",
+            "time_ago": time_ago,
+            "timestamp": activity.timestamp
+        })
+
+    # All values are already converted to float
     return render_template(
         "main/dashboard.html",
-        today_sales_revenue=float(today_sales_revenue or 0),
-        monthly_sales_revenue=float(monthly_sales_revenue or 0),
+        today_sales_revenue=today_sales_revenue,
+        monthly_sales_revenue=monthly_sales_revenue,
         today_profit=float(today_profit or 0),
         monthly_profit=float(monthly_profit or 0),
         top_products=top_products,
@@ -281,7 +377,15 @@ def dashboard():
         payment_counts=payment_counts,
         top_customers=top_customers,
         critical_stock=critical_stock,
-        total_returns=float(total_returns or 0),
+        total_returns=total_returns,
         damaged_losses=int(damaged_losses or 0),
         damaged_value=float(damaged_value or 0),
+        total_inventory_value=total_inventory_value,
+        net_profit_today=float(net_profit_today or 0),
+        net_profit_monthly=float(net_profit_monthly or 0),
+        gross_profit_today=float(today_profit or 0),
+        gross_profit_monthly=float(monthly_profit or 0),
+        today_expenses=float(today_expenses or 0),
+        monthly_expenses=float(monthly_expenses or 0),
+        recent_activities=activity_list,
     )

@@ -2,7 +2,7 @@ from flask import Blueprint, flash, redirect, render_template, request, url_for
 from flask_login import login_required, login_user, logout_user
 
 from app import db
-from app.models import User
+from app.models import User, Role
 from app.utils import log_activity
 
 auth_bp = Blueprint("auth", __name__, url_prefix="/auth")
@@ -21,7 +21,10 @@ def login():
             return redirect(url_for("main.dashboard"))
         log_activity('LOGIN_FAIL', f'Failed login attempt for email: {email}')
         flash("Invalid credentials.", "danger")
-    return render_template("auth/login.html")
+    
+    # Check if this is the first run (no users exist)
+    is_first_run = User.query.first() is None
+    return render_template("auth/login.html", is_first_run=is_first_run)
 
 
 @auth_bp.route("/logout")
@@ -37,6 +40,12 @@ def logout():
 
 @auth_bp.route("/register", methods=["GET", "POST"])
 def register():
+    # Check if users already exist (public registration disabled after first user)
+    existing_users = User.query.first()
+    if existing_users:
+        flash("Public registration is disabled. Please ask the Admin to create an account.", "warning")
+        return redirect(url_for("auth.login"))
+    
     if request.method == "POST":
         email = request.form.get("email", "").lower().strip()
         password = request.form.get("password", "")
@@ -48,11 +57,26 @@ def register():
             flash("User already exists.", "danger")
             return render_template("auth/register.html")
 
+        # Get or create Admin role for the first user
+        admin_role = Role.query.filter_by(name='Admin').first()
+        if not admin_role:
+            # If Admin role doesn't exist, create it with all permissions
+            from app.utils import ALL_PERMISSIONS
+            admin_role = Role(
+                name='Admin',
+                permissions=','.join(ALL_PERMISSIONS)
+            )
+            db.session.add(admin_role)
+            db.session.flush()  # Flush to get the ID
+        
         username = email.split("@")[0] if "@" in email else email
-        user = User(email=email, username=username)
+        user = User(email=email, username=username, role_id=admin_role.id)
         user.set_password(password)
         db.session.add(user)
         db.session.commit()
-        flash("Account created. Please log in.", "success")
+        
+        log_activity('USER_CREATE', f'First user (Admin) created: {user.username} ({user.email})')
+        flash("Admin account created successfully. Please log in.", "success")
         return redirect(url_for("auth.login"))
+    
     return render_template("auth/register.html")

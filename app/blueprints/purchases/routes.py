@@ -1,4 +1,5 @@
-from datetime import datetime
+from datetime import datetime, date
+import pytz
 
 from flask import Blueprint, flash, jsonify, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
@@ -6,6 +7,9 @@ from flask_login import current_user, login_required
 from app import db
 from app.models import Product, Purchase, PurchaseItem, StockMovement, Supplier
 from app.utils import log_stock_movement, permission_required
+
+# Timezone configuration
+MYANMAR_TZ = pytz.timezone('Asia/Yangon')
 
 purchases_bp = Blueprint("purchases", __name__, url_prefix="/purchases")
 
@@ -54,10 +58,9 @@ def delete_supplier(supplier_id: int):
 @login_required
 @permission_required('purchases_manage')
 def new_purchase():
-    from datetime import date
     suppliers = Supplier.query.order_by(Supplier.name).all()
     products = Product.query.order_by(Product.name).all()
-    today = date.today().strftime("%Y-%m-%d")
+    today = datetime.now(MYANMAR_TZ).date().strftime("%Y-%m-%d")
     return render_template(
         "purchases/new_purchase.html", suppliers=suppliers, products=products, today=today
     )

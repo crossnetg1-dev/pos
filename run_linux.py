@@ -1,227 +1,304 @@
 #!/usr/bin/env python3
 """
-Linux Automation Script for Smart POS
-This script automates the setup and running of the Flask POS application on Linux.
+Linux Setup and Launch Script for Cid-POS
+
+This script automates the entire setup process:
+1. Checks for Python installation
+2. Creates virtual environment if missing
+3. Installs all dependencies
+4. Initializes database if needed
+5. Starts the Flask server
+6. Opens browser automatically
 """
 
 import os
 import sys
 import subprocess
-import platform
+import webbrowser
+import time
 from pathlib import Path
 
-# Colors for terminal
-GREEN = '\033[92m'
-YELLOW = '\033[93m'
-RED = '\033[91m'
-BLUE = '\033[94m'
-RESET = '\033[0m'
-BOLD = '\033[1m'
 
-def print_header(text):
-    """Print a formatted header."""
-    print(f"\n{BLUE}{BOLD}{'='*60}{RESET}")
-    print(f"{BLUE}{BOLD}{text.center(60)}{RESET}")
-    print(f"{BLUE}{BOLD}{'='*60}{RESET}\n")
+def print_header():
+    """Print welcome header."""
+    print("\n" + "="*60)
+    print("  Cid-POS System - Linux Setup & Launch")
+    print("="*60 + "\n")
 
-def print_success(text):
-    """Print success message."""
-    print(f"{GREEN}✅ {text}{RESET}")
-
-def print_warning(text):
-    """Print warning message."""
-    print(f"{YELLOW}⚠️  {text}{RESET}")
-
-def print_error(text):
-    """Print error message."""
-    print(f"{RED}❌ {text}{RESET}")
-
-def print_info(text):
-    """Print info message."""
-    print(f"{BLUE}ℹ️  {text}{RESET}")
 
 def check_python():
-    """Check if Python is installed."""
-    print_info("Checking Python installation...")
+    """Check if Python is installed and accessible."""
+    print("🔍 Checking Python installation...")
     try:
-        version = sys.version_info
-        if version.major >= 3 and version.minor >= 8:
-            print_success(f"Python {version.major}.{version.minor}.{version.micro} found")
-            return True
-        else:
-            print_error(f"Python 3.8+ required. Found {version.major}.{version.minor}")
-            return False
-    except Exception as e:
-        print_error(f"Error checking Python: {e}")
-        return False
+        # Try python3 first (Linux standard)
+        result = subprocess.run(
+            ["python3", "--version"],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        if result.returncode == 0:
+            version = result.stdout.strip()
+            print(f"   ✅ {version}")
+            return "python3"
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+    
+    # Fallback to python
+    try:
+        result = subprocess.run(
+            ["python", "--version"],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        if result.returncode == 0:
+            version = result.stdout.strip()
+            print(f"   ✅ {version}")
+            return "python"
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+    
+    print("\n❌ Python not found!")
+    print("   Please install Python 3.8+ using:")
+    print("   sudo apt-get install python3 python3-pip python3-venv  (Debian/Ubuntu)")
+    print("   sudo yum install python3 python3-pip  (CentOS/RHEL)")
+    print("   sudo pacman -S python python-pip  (Arch)")
+    return None
+
 
 def check_venv_module():
     """Check if venv module is available."""
-    print_info("Checking venv module...")
-    try:
-        import venv
-        print_success("venv module available")
-        return True
-    except ImportError:
-        print_warning("venv module not found. Attempting to install python3-venv...")
-        try:
-            # Try to install python3-venv (Debian/Ubuntu)
-            subprocess.run(["sudo", "apt-get", "install", "-y", "python3-venv"], check=True)
-            print_success("python3-venv installed")
-            return True
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            print_error("Please install python3-venv manually:")
-            print("  Debian/Ubuntu: sudo apt-get install python3-venv")
-            print("  Fedora/RHEL: sudo dnf install python3-venv")
-            print("  Arch: sudo pacman -S python-venv")
-            return False
-
-def check_virtualenv():
-    """Check if virtual environment exists, create if not."""
-    venv_path = Path("venv")
-    print_info("Checking virtual environment...")
+    python_cmd = check_python()
+    if not python_cmd:
+        return False
     
-    if venv_path.exists() and (venv_path / "bin" / "python3").exists():
-        print_success("Virtual environment found")
-        return True
-    else:
-        print_warning("Virtual environment not found. Creating one...")
-        try:
-            subprocess.run([sys.executable, "-m", "venv", "venv"], check=True)
-            print_success("Virtual environment created")
+    print("🔍 Checking venv module...")
+    try:
+        result = subprocess.run(
+            [python_cmd, "-m", "venv", "--help"],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        if result.returncode == 0:
+            print("   ✅ venv module available")
             return True
-        except subprocess.CalledProcessError as e:
-            print_error(f"Failed to create virtual environment: {e}")
-            return False
+    except Exception:
+        pass
+    
+    print("   ⚠️  venv module not found")
+    print("   Installing python3-venv...")
+    print("   Please run: sudo apt-get install python3-venv")
+    return False
+
+
+def create_venv(python_cmd):
+    """Create virtual environment if it doesn't exist."""
+    venv_path = Path("venv")
+    if venv_path.exists() and (venv_path / "bin" / "python").exists():
+        print("   ✅ Virtual environment already exists")
+        return True
+    
+    print("📦 Creating virtual environment...")
+    try:
+        subprocess.run(
+            [python_cmd, "-m", "venv", "venv"],
+            check=True,
+            timeout=60
+        )
+        print("   ✅ Virtual environment created")
+        return True
+    except subprocess.CalledProcessError:
+        print("   ❌ Failed to create virtual environment")
+        print("   Try: sudo apt-get install python3-venv")
+        return False
+    except Exception as e:
+        print(f"   ❌ Error: {e}")
+        return False
+
 
 def get_venv_python():
-    """Get the path to the virtual environment Python executable."""
-    return Path("venv") / "bin" / "python3"
+    """Get the path to venv Python executable."""
+    return Path("venv") / "bin" / "python"
+
 
 def get_venv_pip():
-    """Get the path to the virtual environment pip executable."""
-    return Path("venv") / "bin" / "pip3"
+    """Get the path to venv pip executable."""
+    return Path("venv") / "bin" / "pip"
+
 
 def install_dependencies():
-    """Install or upgrade dependencies from requirements.txt."""
-    print_info("Installing dependencies...")
+    """Install dependencies from requirements.txt."""
     venv_pip = get_venv_pip()
-    
     if not venv_pip.exists():
-        print_error("Virtual environment pip not found")
+        print("   ❌ Virtual environment pip not found")
+        return False
+    
+    print("📥 Installing dependencies (this may take a few minutes)...")
+    try:
+        subprocess.run(
+            [str(venv_pip), "install", "-r", "requirements.txt"],
+            check=True,
+            timeout=300  # 5 minutes timeout
+        )
+        print("   ✅ Dependencies installed successfully")
+        return True
+    except subprocess.CalledProcessError:
+        print("   ❌ Failed to install dependencies")
+        print("   Please check your internet connection and try again.")
+        return False
+    except subprocess.TimeoutExpired:
+        print("   ❌ Installation timed out")
+        return False
+    except Exception as e:
+        print(f"   ❌ Error: {e}")
+        return False
+
+
+def check_database():
+    """Check if database exists, initialize if needed."""
+    db_path = Path("app") / "pos.db"
+    if db_path.exists():
+        print("   ✅ Database already exists")
+        return True
+    
+    print("🗄️  Initializing database...")
+    venv_python = get_venv_python()
+    if not venv_python.exists():
+        print("   ❌ Virtual environment Python not found")
         return False
     
     try:
-        # Upgrade pip first
-        print_info("Upgrading pip...")
-        subprocess.run([str(venv_pip), "install", "--upgrade", "pip"], check=True)
+        # Run fix_db.py first to ensure schema is correct
+        fix_db_path = Path("fix_db.py")
+        if fix_db_path.exists():
+            subprocess.run(
+                [str(venv_python), "fix_db.py"],
+                check=True,
+                timeout=30
+            )
         
-        # Install requirements
-        if Path("requirements.txt").exists():
-            print_info("Installing packages from requirements.txt...")
-            subprocess.run([str(venv_pip), "install", "-r", "requirements.txt"], check=True)
-            print_success("Dependencies installed successfully")
+        # Run setup.py to initialize database
+        setup_path = Path("setup.py")
+        if setup_path.exists():
+            subprocess.run(
+                [str(venv_python), "setup.py"],
+                check=True,
+                timeout=30
+            )
+            print("   ✅ Database initialized")
             return True
         else:
-            print_warning("requirements.txt not found")
-            return False
-    except subprocess.CalledProcessError as e:
-        print_error(f"Failed to install dependencies: {e}")
-        return False
-
-def run_setup():
-    """Run setup.py to initialize the database."""
-    print_info("Checking if database setup is needed...")
-    venv_python = get_venv_python()
-    
-    if not venv_python.exists():
-        print_error("Virtual environment Python not found")
-        return False
-    
-    db_path = Path("app") / "pos.db"
-    
-    # Ask user if they want to run setup
-    if not db_path.exists():
-        print_warning("Database not found. Running setup...")
-        try:
-            subprocess.run([str(venv_python), "setup.py"], check=True)
-            print_success("Database setup completed")
+            # If setup.py doesn't exist, just create tables
+            from app import create_app, db
+            app = create_app()
+            with app.app_context():
+                db.create_all()
+            print("   ✅ Database tables created")
             return True
-        except subprocess.CalledProcessError as e:
-            print_error(f"Setup failed: {e}")
-            return False
-    else:
-        print_success("Database already exists. Skipping setup.")
-        return True
+    except Exception as e:
+        print(f"   ⚠️  Database initialization warning: {e}")
+        print("   The app will try to create tables on first run.")
+        return True  # Continue anyway
 
-def run_app():
-    """Run the Flask application."""
-    print_info("Starting Flask application...")
+
+def open_browser():
+    """Open browser after a short delay."""
+    print("\n🌐 Opening browser in 3 seconds...")
+    time.sleep(3)
+    try:
+        # Try different browser commands for Linux
+        browsers = ['xdg-open', 'gnome-open', 'kde-open', 'x-www-browser']
+        for browser_cmd in browsers:
+            try:
+                subprocess.Popen([browser_cmd, "http://127.0.0.1:5000"], 
+                               stdout=subprocess.DEVNULL, 
+                               stderr=subprocess.DEVNULL)
+                print("   ✅ Browser opened")
+                return
+            except FileNotFoundError:
+                continue
+        # Fallback to webbrowser module
+        webbrowser.open("http://127.0.0.1:5000")
+        print("   ✅ Browser opened")
+    except Exception as e:
+        print(f"   ⚠️  Could not open browser automatically: {e}")
+        print("   Please manually open: http://127.0.0.1:5000")
+
+
+def run_server():
+    """Start the Flask development server."""
     venv_python = get_venv_python()
-    
     if not venv_python.exists():
-        print_error("Virtual environment Python not found")
+        print("   ❌ Virtual environment Python not found")
         return False
     
-    print_header("Smart POS is starting...")
-    print_info("The application will be available at: http://127.0.0.1:5000")
-    print_info("Press Ctrl+C to stop the server\n")
+    print("\n" + "="*60)
+    print("  🚀 Starting Cid-POS Server...")
+    print("="*60)
+    print("\n📍 Server URL: http://127.0.0.1:5000")
+    print("⚠️  Press Ctrl+C to stop the server\n")
     
     try:
-        # Set environment variables for Flask
-        env = os.environ.copy()
-        env["FLASK_APP"] = "run.py"
-        env["FLASK_ENV"] = "development"
+        # Open browser in background thread
+        import threading
+        browser_thread = threading.Thread(target=open_browser, daemon=True)
+        browser_thread.start()
         
         # Run the Flask app
-        subprocess.run([str(venv_python), "run.py"], env=env, check=True)
+        subprocess.run([str(venv_python), "run.py"], check=True)
     except KeyboardInterrupt:
-        print_warning("\n\nServer stopped by user")
+        print("\n\n🛑 Server stopped by user")
         return True
-    except subprocess.CalledProcessError as e:
-        print_error(f"Failed to start application: {e}")
+    except Exception as e:
+        print(f"\n❌ Error starting server: {e}")
         return False
 
+
 def main():
-    """Main execution function."""
-    print_header("Smart POS - Linux Setup & Run Script")
+    """Main setup and launch function."""
+    print_header()
     
-    # Check Python
-    if not check_python():
-        print_error("Please install Python 3.8 or higher")
+    # Step 1: Check Python
+    python_cmd = check_python()
+    if not python_cmd:
         sys.exit(1)
     
-    # Check venv module
+    # Step 2: Check venv module
     if not check_venv_module():
-        print_warning("Continuing anyway...")
+        print("\n⚠️  venv module check failed, but continuing...")
     
-    # Check/Create virtual environment
-    if not check_virtualenv():
-        print_error("Failed to set up virtual environment")
+    # Step 3: Create venv
+    print("\n📦 Setting up virtual environment...")
+    if not create_venv(python_cmd):
+        print("\n❌ Setup failed. Please check the errors above.")
         sys.exit(1)
     
-    # Install dependencies
+    # Step 4: Install dependencies
+    print("\n📥 Installing dependencies...")
     if not install_dependencies():
-        print_warning("Some dependencies may not be installed correctly")
-        response = input("Continue anyway? (y/n): ").lower()
-        if response != 'y':
-            sys.exit(1)
+        print("\n❌ Failed to install dependencies.")
+        print("   You can try running manually:")
+        print("   source venv/bin/activate")
+        print("   pip install -r requirements.txt")
+        sys.exit(1)
     
-    # Run setup if needed
-    run_setup()
+    # Step 5: Check database
+    print("\n🗄️  Checking database...")
+    check_database()
     
-    # Run the application
-    print_header("Starting Application")
-    run_app()
+    # Step 6: Run server
+    print("\n✅ Setup complete! Starting server...\n")
+    run_server()
+
 
 if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        print_warning("\n\nScript interrupted by user")
+        print("\n\n👋 Goodbye!")
         sys.exit(0)
     except Exception as e:
-        print_error(f"Unexpected error: {e}")
-        import traceback
-        traceback.print_exc()
+        print(f"\n❌ Unexpected error: {e}")
         sys.exit(1)

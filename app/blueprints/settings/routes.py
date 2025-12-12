@@ -2,11 +2,15 @@ import os
 import shutil
 from datetime import datetime
 from pathlib import Path
+import pytz
 from flask import Blueprint, current_app, flash, jsonify, redirect, render_template, request, send_file, url_for
 from flask_login import current_user, login_required
 from werkzeug.utils import secure_filename
 
 from app import db
+
+# Timezone configuration
+MYANMAR_TZ = pytz.timezone('Asia/Yangon')
 from app.models import (
     Category,
     Customer,

@@ -60,13 +60,47 @@ def checkout():
 
     data = request.get_json(silent=True) or {}
     cart_items = data.get("cart_items") or []
-    tax = data.get("tax", 0) or 0
-    discount = data.get("discount", 0) or 0
-    payment_method = data.get("payment_method", "cash")
-    customer_id = data.get("customer_id")
-
+    
+    # Validate cart is not empty
     if not cart_items:
         return jsonify({"error": "empty_cart", "message": "No items provided"}), 400
+    
+    # Validate and convert numeric values
+    try:
+        tax = float(data.get("tax", 0) or 0)
+        discount = float(data.get("discount", 0) or 0)
+    except (ValueError, TypeError):
+        return jsonify({"error": "invalid_data", "message": "Invalid tax or discount value"}), 400
+    
+    # Ensure tax and discount are not negative
+    if tax < 0:
+        tax = 0
+    if discount < 0:
+        discount = 0
+    
+    payment_method = data.get("payment_method", "cash")
+    customer_id = data.get("customer_id")
+    
+    # Calculate subtotal to validate discount
+    subtotal = 0
+    for item in cart_items:
+        product_id = item.get("product_id")
+        quantity = int(item.get("quantity", 0) or 0)
+        price = item.get("price")
+        
+        if not product_id or quantity <= 0:
+            continue
+        
+        product = db.session.get(Product, product_id)
+        if not product:
+            continue
+        
+        unit_price = price if price is not None else product.price
+        subtotal += (unit_price or 0) * quantity
+    
+    # Validation: Ensure discount does not exceed subtotal
+    if discount > subtotal:
+        return jsonify({"error": "invalid_discount", "message": f"Discount ({discount}) cannot exceed subtotal ({subtotal})"}), 400
 
     invoice_no = generate_invoice_number()
     sale = Sale(
