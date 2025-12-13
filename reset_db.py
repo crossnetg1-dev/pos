@@ -13,7 +13,6 @@ import sys
 
 from app import create_app, db
 
-
 def main():
     """Reset the database by dropping and recreating all tables."""
     

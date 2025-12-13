@@ -17,7 +17,7 @@
       <form method="get" action="{{ url_for('reports.overview') }}" class="row g-3">
         <div class="col-md-8">
           <div class="input-group">
-            <span class="input-group-text bg-white"><i class="fa fa-search"></i></span>
+            <span class="input-group-text"><i class="fa fa-search"></i></span>
             <input type="text" name="q" class="form-control" 
                    placeholder="Search Invoice No. or Customer Name..." 
                    value="{{ search_query or '' }}" autofocus>
@@ -62,7 +62,7 @@
   </div>
 
   <div class="card border-0 shadow-sm">
-    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+    <div class="card-header d-flex justify-content-between align-items-center">
       <h6 class="mb-0">Sales Summary</h6>
       <div>
         <span class="badge bg-info me-2">Total Sales: {{ sales_count }}</span>

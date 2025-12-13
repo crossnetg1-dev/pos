@@ -44,11 +44,12 @@ def generate_invoice_number():
 @login_required
 @permission_required('pos_access')
 def cart():
-    from app.models import StoreSetting
+    from app.models import StoreSetting, Category
     products = Product.query.order_by(Product.name.asc()).all()
     customers = Customer.query.order_by(Customer.name.asc()).all()
+    categories = Category.query.order_by(Category.name.asc()).all()
     store_settings = StoreSetting.get_settings()
-    return render_template("pos/index.html", products=products, customers=customers, store=store_settings)
+    return render_template("pos/index.html", products=products, customers=customers, categories=categories, store=store_settings)
 
 
 @pos_bp.route("/checkout", methods=["POST"])
@@ -115,6 +116,37 @@ def checkout():
     db.session.add(sale)
     db.session.flush()  # ensure sale.id
 
+    # Backend Safety Net: Double-check stock levels before processing
+    stock_validation_errors = []
+    for item in cart_items:
+        product_id = item.get("product_id")
+        quantity = int(item.get("quantity", 0) or 0)
+        
+        if not product_id or quantity <= 0:
+            continue
+        
+        # Query fresh stock from database (critical for concurrent requests)
+        product = db.session.get(Product, product_id)
+        if not product:
+            stock_validation_errors.append(f"Product ID {product_id} not found")
+            continue
+        
+        current_stock = product.stock or 0
+        if quantity > current_stock:
+            stock_validation_errors.append(
+                f"Not enough stock for '{product.name}'. Requested: {quantity}, Available: {current_stock}"
+            )
+    
+    # If any stock validation failed, abort the transaction
+    if stock_validation_errors:
+        db.session.rollback()
+        error_message = "; ".join(stock_validation_errors)
+        return jsonify({
+            "error": "insufficient_stock",
+            "message": error_message
+        }), 400
+
+    # All stock checks passed, proceed with sale
     for item in cart_items:
         product_id = item.get("product_id")
         quantity = int(item.get("quantity", 0) or 0)
@@ -130,7 +162,7 @@ def checkout():
         unit_price = price if price is not None else product.price
         subtotal = (unit_price or 0) * quantity
 
-        # Deduct stock
+        # Deduct stock (we've already validated above)
         product.stock = (product.stock or 0) - quantity
 
         # Log stock movement
@@ -164,7 +196,20 @@ def checkout():
             customer.credit_balance = current_balance + sale_total
             customer_balance = float(customer.credit_balance)
 
-    db.session.commit()
+    try:
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        import traceback
+        print(f"\n{'='*60}")
+        print(f"ERROR in checkout (Sale ID: {sale.id}):")
+        print(f"{'='*60}")
+        traceback.print_exc()
+        print(f"{'='*60}\n")
+        return jsonify({
+            "error": "checkout_failed",
+            "message": f"Error processing checkout: {str(e)}"
+        }), 500
     
     # Log sale creation
     customer_name = ""

@@ -12,6 +12,9 @@
   <div class="d-flex justify-content-between align-items-center mb-3">
     <h4 class="mb-0">Edit Sale - Invoice #{{ sale.invoice_no }}</h4>
   </div>
+  
+  <!-- Hidden input for sale ID -->
+  <input type="hidden" id="edit_sale_id" value="{{ sale.id }}">
 
   <div class="row g-3">
     <!-- Products -->
@@ -81,6 +84,14 @@
                 <label class="form-check-label" for="payCash">Cash</label>
               </div>
               <div class="form-check">
+                <input class="form-check-input" type="radio" name="paymentMethod" id="payKPay" value="kpay" {% if sale.payment_method == 'kpay' %}checked{% endif %}>
+                <label class="form-check-label" for="payKPay">KPay</label>
+              </div>
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="paymentMethod" id="payWavePay" value="wavepay" {% if sale.payment_method == 'wavepay' %}checked{% endif %}>
+                <label class="form-check-label" for="payWavePay">WavePay</label>
+              </div>
+              <div class="form-check">
                 <input class="form-check-input" type="radio" name="paymentMethod" id="payCredit" value="credit" {% if sale.payment_method == 'credit' %}checked{% endif %}>
                 <label class="form-check-label" for="payCredit">Credit</label>
               </div>
@@ -121,7 +132,7 @@
               <span>Total</span>
               <span id="totalLabel">0 Ks</span>
             </div>
-            <button class="btn btn-success w-100 mt-3" id="updateSaleBtn">
+            <button type="button" class="btn btn-success w-100 mt-3" id="updateSaleBtn">
               <i class="fa fa-save me-1"></i>Update Sale
             </button>
           </div>
@@ -315,17 +326,100 @@
     }
   });
 
-  document.getElementById('updateSaleBtn').addEventListener('click', async () => {
+  // Robust event delegation for Update Sale button
+  // Use document-level listener to ensure it works even if button is dynamically loaded
+  document.addEventListener('click', async function(e) {
+    // Check if the clicked element or its parent is the update button
+    const updateBtn = e.target.closest('#updateSaleBtn');
+    if (!updateBtn) return;
+    
+    // Prevent any default form submission if button is inside a form
+    e.preventDefault();
+    e.stopPropagation();
+    
+    console.log("✅ Update Sale button clicked!"); // Debug log
+    
     const items = Object.values(cart);
+    console.log("Cart items:", items); // Debug log
+    
     if (!items.length) {
-      alert('Cart is empty.');
+      Toast.fire({
+        icon: 'warning',
+        title: 'Cart is empty',
+        text: 'Please add items to the sale'
+      });
       return;
     }
-    const customerId = document.getElementById('customerSelect').value || null;
-    const paymentMethod = document.querySelector('input[name="paymentMethod"]:checked').value;
-    const saleDate = document.getElementById('saleDate').value;
+    
+    // Collect form data explicitly
+    const saleIdInput = document.getElementById('edit_sale_id');
+    const customerSelect = document.getElementById('customerSelect');
+    const paymentMethodRadio = document.querySelector('input[name="paymentMethod"]:checked');
+    const saleDateInput = document.getElementById('saleDate');
+    
+    // Validate sale ID first
+    if (!saleIdInput || !saleIdInput.value) {
+      console.error("❌ Sale ID missing!");
+      Toast.fire({
+        icon: 'error',
+        title: 'Error: Sale ID missing',
+        text: 'Unable to identify the sale. Please refresh the page.',
+        timer: 3000
+      });
+      return;
+    }
+    
+    const saleId = parseInt(saleIdInput.value);
+    console.log("Sale ID:", saleId); // Debug log
+    
+    // Validate other form elements
+    if (!customerSelect) {
+      console.error("❌ Missing customerSelect element");
+      Toast.fire({
+        icon: 'error',
+        title: 'Form Error',
+        text: 'Customer select field not found. Please refresh the page.',
+        timer: 3000
+      });
+      return;
+    }
+    
+    if (!paymentMethodRadio) {
+      console.error("❌ No payment method selected");
+      Toast.fire({
+        icon: 'error',
+        title: 'Form Error',
+        text: 'Please select a payment method.',
+        timer: 3000
+      });
+      return;
+    }
+    
+    if (!saleDateInput) {
+      console.error("❌ Missing saleDateInput element");
+      Toast.fire({
+        icon: 'error',
+        title: 'Form Error',
+        text: 'Sale date field not found. Please refresh the page.',
+        timer: 3000
+      });
+      return;
+    }
+    
+    const customerId = customerSelect.value || null;
+    const paymentMethod = paymentMethodRadio.value;
+    const saleDate = saleDateInput.value;
+    
+    console.log("Form data:", { customerId, paymentMethod, saleDate }); // Debug log
 
+    // Calculate total from cart items
+    const subtotal = items.reduce((sum, item) => sum + (item.price * item.qty), 0);
+    const tax = 0;
+    const discount = 0;
+    const grandTotal = subtotal + tax - discount;
+    
     const payload = {
+      sale_id: saleId,  // Include sale ID in payload
       cart_items: items.map(i => ({
         product_id: i.id,
         quantity: i.qty,
@@ -334,28 +428,104 @@
       customer_id: customerId ? parseInt(customerId) : null,
       payment_method: paymentMethod,
       date: saleDate,
-      tax: 0,
-      discount: 0
+      tax: tax,
+      discount: discount,
+      total: grandTotal  // Include total in payload
     };
+    
+    console.log("Payload:", payload); // Debug log
+    
+    const originalBtnText = updateBtn.innerHTML;
+    
+    // Disable button and show loading state
+    updateBtn.disabled = true;
+    updateBtn.innerHTML = '<i class="fa fa-spinner fa-spin me-1"></i>Updating...';
+    
+    // Use saleId from hidden input (already validated above)
+    const updateUrl = `/reports/sale/${saleId}/edit`;
+    console.log("Sending request to:", updateUrl); // Debug log
+    
     try {
-      const res = await fetch("/reports/sale/{{ sale.id }}/edit", {
+      const res = await fetch(updateUrl, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "X-Requested-With": "XMLHttpRequest"
+        },
         body: JSON.stringify(payload)
       });
-      const data = await res.json();
-      if (!res.ok) {
-        alert(data.error || 'Update failed');
-        return;
+      
+      console.log("Response status:", res.status); // Debug log
+      
+      let data;
+      try {
+        data = await res.json();
+        console.log("Response data:", data); // Debug log
+      } catch (jsonErr) {
+        console.error("JSON parse error:", jsonErr);
+        const text = await res.text();
+        console.error("Response text:", text);
+        throw new Error("Invalid response from server");
       }
-      alert('Sale updated successfully!');
-      window.location.href = '/reports/';
+      
+      // Reset button state
+      updateBtn.disabled = false;
+      updateBtn.innerHTML = originalBtnText;
+      
+      // Handle response
+      if (res.ok && data.success) {
+        // Success! Show message and reload
+        console.log("✅ Update successful!"); // Debug log
+        Toast.fire({
+          icon: 'success',
+          title: 'Sale Updated!',
+          text: data.message || 'Changes saved successfully',
+          timer: 2000
+        }).then(() => {
+          window.location.reload();
+        });
+      } else {
+        // Backend returned error
+        console.error("❌ Update failed:", data); // Debug log
+        Toast.fire({
+          icon: 'error',
+          title: 'Update Failed',
+          text: data.message || 'Failed to update sale',
+          timer: 3000
+        });
+      }
     } catch (err) {
-      console.error(err);
-      alert('Error updating sale.');
+      // Network error or JSON parse error
+      console.error('❌ Error updating sale:', err); // Debug log
+      
+      // Reset button state
+      updateBtn.disabled = false;
+      updateBtn.innerHTML = originalBtnText;
+      
+      Toast.fire({
+        icon: 'error',
+        title: 'System Error',
+        text: 'Failed to connect to server: ' + (err.message || 'Unknown error'),
+        timer: 3000
+      });
     }
   });
 
   renderCart();
+  
+  // Fallback: Direct event listener (in case event delegation doesn't work)
+  // This ensures the button works even if the above delegation fails
+  const updateBtnDirect = document.getElementById('updateSaleBtn');
+  if (updateBtnDirect) {
+    console.log("✅ Update Sale button found in DOM");
+    // Remove any existing listeners to avoid duplicates
+    const newBtn = updateBtnDirect.cloneNode(true);
+    updateBtnDirect.parentNode.replaceChild(newBtn, updateBtnDirect);
+    
+    // The event delegation above should handle it, but this is a safety net
+    console.log("✅ Event listeners attached");
+  } else {
+    console.error("❌ Update Sale button NOT found in DOM!");
+  }
 </script>
 {% endblock %}

@@ -12,7 +12,7 @@ from barcode.writer import ImageWriter
 
 from app import db
 from app.models import Category, Product, StockMovement, Unit
-from app.utils import log_stock_movement, permission_required
+from app.utils import log_activity, log_stock_movement, permission_required
 
 # Timezone configuration
 MYANMAR_TZ = pytz.timezone('Asia/Yangon')
@@ -560,7 +560,8 @@ def import_data():
                         stock=stock,
                         min_stock=min_stock,
                         category_id=category_id,
-                        unit_id=unit_id
+                        unit_id=unit_id,
+                        image_file="default.jpg"  # Set default image for imported products
                     )
                     db.session.add(new_product)
                     imported_count += 1
@@ -741,6 +742,39 @@ def print_labels():
         paper_size=paper_size,
         store=store_settings
     )
+
+
+@inventory_bp.route("/bulk/delete", methods=["POST"])
+@login_required
+@permission_required('inventory_edit')
+def bulk_delete_products():
+    """Delete multiple products at once."""
+    if not request.is_json:
+        return jsonify({"error": "JSON body required"}), 400
+    
+    data = request.get_json()
+    product_ids = data.get("product_ids", [])
+    
+    if not product_ids:
+        return jsonify({"error": "No products selected"}), 400
+    
+    deleted_count = 0
+    deleted_names = []
+    
+    for product_id in product_ids:
+        product = db.session.get(Product, product_id)
+        if product:
+            deleted_names.append(product.name)
+            db.session.delete(product)
+            deleted_count += 1
+    
+    db.session.commit()
+    
+    if deleted_count > 0:
+        log_activity('PRODUCT_DELETE', f'Bulk deleted {deleted_count} products: {", ".join(deleted_names[:5])}{"..." if len(deleted_names) > 5 else ""}')
+        return jsonify({"message": f"{deleted_count} product(s) deleted successfully"}), 200
+    else:
+        return jsonify({"error": "No products were deleted"}), 400
 
 
 @inventory_bp.route("/history/<int:product_id>", methods=["GET"])

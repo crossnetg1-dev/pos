@@ -286,146 +286,233 @@ def edit_sale(sale_id: int):
 @login_required
 @permission_required('sales_edit')
 def update_sale_full(sale_id: int):
-    """CRITICAL: Strict Rollback Logic for accurate stock and credit updates."""
-    # Fetch Sale: Get the sale object
-    sale = db.session.get(Sale, sale_id)
-    if not sale:
-        return jsonify({"error": "Sale not found"}), 404
+    """Update sale with smart stock adjustment based on quantity differences."""
+    try:
+        sale = db.session.get(Sale, sale_id)
+        if not sale:
+            return jsonify({"success": False, "message": "Sale not found"}), 404
 
-    if not request.is_json:
-        return jsonify({"error": "JSON body required"}), 400
+        if not request.is_json:
+            return jsonify({"success": False, "message": "JSON body required"}), 400
 
-    data = request.get_json(silent=True) or {}
-    # Support both 'cart_items' (from frontend) and 'items' (alternative)
-    new_items = data.get("cart_items") or data.get("items", [])
-    customer_id = data.get("customer_id")
-    payment_method = data.get("payment_method", "cash")
-    sale_date = data.get("date")
+        data = request.get_json(silent=True) or {}
+        new_items = data.get("cart_items") or data.get("items", [])
+        customer_id = data.get("customer_id")
+        payment_method = data.get("payment_method", "cash")
+        sale_date = data.get("date")
 
-    # Store old values for rollback
-    old_payment_method = sale.payment_method
-    old_customer_id = sale.customer_id
-    old_total = Decimal(str(sale.total_amount or 0))
+        if not new_items:
+            return jsonify({"success": False, "message": "No items provided"}), 400
 
-    # ============================================
-    # STEP A: ROLLBACK
-    # ============================================
-    # Loop through the OLD sale.items
-    for old_item in sale.items:
-        # ADD item.quantity back to Product.stock (Return items to inventory)
-        product = db.session.get(Product, old_item.product_id)
-        if product:
-            current_stock = product.stock or 0
-            product.stock = current_stock + old_item.quantity
-            # Log stock movement (Revert Phase)
-            log_stock_movement(
+        # Store old values for comparison
+        old_payment_method = sale.payment_method
+        old_customer_id = sale.customer_id
+        old_total = Decimal(str(sale.total_amount or 0))
+
+        # Create a map of old items by product_id for quick lookup
+        old_items_map = {}
+        for old_item in sale.items:
+            product_id = old_item.product_id
+            if product_id not in old_items_map:
+                old_items_map[product_id] = []
+            old_items_map[product_id].append({
+                'sale_item': old_item,
+                'quantity': old_item.quantity,
+                'price': float(old_item.price or 0)
+            })
+
+        # Create a map of new items by product_id
+        new_items_map = {}
+        for item_data in new_items:
+            product_id = item_data.get("product_id")
+            if product_id and product_id > 0:
+                if product_id not in new_items_map:
+                    new_items_map[product_id] = []
+                new_items_map[product_id].append({
+                    'quantity': int(item_data.get("quantity", 0)),
+                    'price': float(item_data.get("price", 0))
+                })
+
+        # ============================================
+        # STEP 1: Validate Stock Availability (Before Making Changes)
+        # ============================================
+        all_product_ids = set(old_items_map.keys()) | set(new_items_map.keys())
+        
+        for product_id in all_product_ids:
+            product = db.session.get(Product, product_id)
+            if not product:
+                continue
+            
+            # Calculate total old quantity for this product
+            old_total_qty = sum(item['quantity'] for item in old_items_map.get(product_id, []))
+            
+            # Calculate total new quantity for this product
+            new_total_qty = sum(item['quantity'] for item in new_items_map.get(product_id, []))
+            
+            # Calculate difference (positive = need more stock, negative = returning stock)
+            quantity_diff = new_total_qty - old_total_qty
+            
+            # If increasing quantity, check if enough stock is available
+            if quantity_diff > 0:
+                current_stock = product.stock or 0
+                if current_stock < quantity_diff:
+                    return jsonify({
+                        "success": False,
+                        "message": f"Not enough stock for {product.name}. Available: {current_stock}, Required: {quantity_diff}"
+                    }), 400
+
+        # ============================================
+        # STEP 2: Calculate Stock Adjustments (Diff-Based)
+        # ============================================
+        for product_id in all_product_ids:
+            product = db.session.get(Product, product_id)
+            if not product:
+                continue
+            
+            old_total_qty = sum(item['quantity'] for item in old_items_map.get(product_id, []))
+            new_total_qty = sum(item['quantity'] for item in new_items_map.get(product_id, []))
+            diff = new_total_qty - old_total_qty
+            
+            if diff != 0:
+                # Adjust stock: if diff is negative (quantity decreased), stock increases
+                # if diff is positive (quantity increased), stock decreases
+                current_stock = product.stock or 0
+                new_stock = max(0, current_stock - diff)
+                product.stock = new_stock
+                
+                # Log stock movement
+                change_type = 'in' if diff < 0 else 'out'
+                log_stock_movement(
+                    product_id=product.id,
+                    quantity=abs(diff),
+                    change_type=change_type,
+                    reason=f'Sale Edit #{sale.invoice_no} - Quantity changed from {old_total_qty} to {new_total_qty}',
+                    user_id=current_user.id if current_user.is_authenticated else None
+                )
+
+        # ============================================
+        # STEP 3: Handle Credit Balance Changes
+        # ============================================
+        # Revert old credit if payment was credit
+        if old_payment_method == "credit" and old_customer_id:
+            old_customer = db.session.get(Customer, old_customer_id)
+            if old_customer:
+                current_balance = Decimal(str(old_customer.credit_balance or 0))
+                old_customer.credit_balance = max(Decimal('0'), current_balance - old_total)
+
+        # ============================================
+        # STEP 4: Delete Old SaleItems and Create New Ones
+        # ============================================
+        for old_item in sale.items:
+            db.session.delete(old_item)
+        
+        db.session.flush()
+
+        # ============================================
+        # STEP 5: Create New SaleItems
+        # ============================================
+        new_subtotal = Decimal('0')
+        for item_data in new_items:
+            product_id = item_data.get("product_id")
+            quantity = int(item_data.get("quantity", 0))
+            price = float(item_data.get("price", 0))
+
+            if not product_id or quantity <= 0:
+                continue
+
+            product = db.session.get(Product, product_id)
+            if not product:
+                continue
+
+            item_subtotal = Decimal(str(price)) * quantity
+            new_subtotal += item_subtotal
+
+            sale_item = SaleItem(
+                sale_id=sale.id,
                 product_id=product.id,
-                quantity=old_item.quantity,
-                change_type='in',
-                reason=f'Sale Edit Rollback #{sale.invoice_no}',
-                user_id=current_user.id if current_user.is_authenticated else None
+                quantity=quantity,
+                price=price,
+                subtotal=float(item_subtotal),
             )
+            db.session.add(sale_item)
 
-    # If payment was 'Credit' and user exists, SUBTRACT old total_amount from Customer.credit_balance
-    if old_payment_method == "credit" and old_customer_id:
-        old_customer = db.session.get(Customer, old_customer_id)
-        if old_customer:
-            current_balance = Decimal(str(old_customer.credit_balance or 0))
-            old_customer.credit_balance = max(Decimal('0'), current_balance - old_total)
+        # Flush to ensure items are available for recompute_totals
+        db.session.flush()
 
-    # DELETE all old SaleItem records
-    for old_item in sale.items:
-        db.session.delete(old_item)
-
-    db.session.flush()  # Ensure deletions are processed before creating new items
-
-    # ============================================
-    # STEP B: APPLY NEW
-    # ============================================
-    # Update Sale Header (Date, Payment Method, Customer)
-    sale.customer_id = int(customer_id) if customer_id else None
-    sale.payment_method = payment_method
-    if sale_date:
-        try:
-            sale.date = datetime.strptime(sale_date, "%Y-%m-%dT%H:%M")
-        except ValueError:
+        # ============================================
+        # STEP 6: Update Sale Header
+        # ============================================
+        sale.customer_id = int(customer_id) if customer_id else None
+        sale.payment_method = payment_method
+        if sale_date:
             try:
-                sale.date = datetime.strptime(sale_date, "%Y-%m-%d %H:%M")
+                sale.date = datetime.strptime(sale_date, "%Y-%m-%dT%H:%M")
             except ValueError:
                 try:
-                    sale.date = datetime.strptime(sale_date, "%Y-%m-%d")
+                    sale.date = datetime.strptime(sale_date, "%Y-%m-%d %H:%M")
                 except ValueError:
-                    pass  # Keep existing date if parsing fails
+                    try:
+                        sale.date = datetime.strptime(sale_date, "%Y-%m-%d")
+                    except ValueError:
+                        pass
 
-    # Loop through NEW items from the form
-    for item_data in new_items:
-        product_id = item_data.get("product_id")
-        quantity = int(item_data.get("quantity", 0))
-        price = float(item_data.get("price", 0))
+        # Calculate New Total - Use recompute_totals or manual calculation
+        try:
+            sale.recompute_totals()
+            new_total = Decimal(str(sale.total_amount or 0))
+        except Exception:
+            # Fallback: Manual calculation if recompute_totals fails
+            tax = Decimal(str(sale.tax or 0))
+            discount = Decimal(str(sale.discount or 0))
+            new_total = new_subtotal + tax - discount
+            sale.total_amount = float(new_total)
 
-        if not product_id or quantity <= 0:
-            continue
+        # Apply new credit if payment is credit
+        if payment_method == "credit" and sale.customer_id:
+            new_customer = db.session.get(Customer, sale.customer_id)
+            if new_customer:
+                current_balance = Decimal(str(new_customer.credit_balance or 0))
+                new_customer.credit_balance = current_balance + new_total
 
-        product = db.session.get(Product, product_id)
-        if not product:
-            continue
+        # Commit all changes
+        db.session.commit()
+        
+        # Log sale edit
+        changes = []
+        if old_payment_method != payment_method:
+            changes.append(f"Payment: {old_payment_method} → {payment_method}")
+        if old_total != new_total:
+            changes.append(f"Total: {old_total} → {new_total}")
+        if old_customer_id != customer_id:
+            changes.append(f"Customer changed")
+        
+        change_details = ", ".join(changes) if changes else "Items updated"
+        log_activity('SALE_EDIT', f'Edited sale {sale.invoice_no} (ID: {sale_id}): {change_details}')
 
-        # SUBTRACT new quantity from Product.stock
-        current_stock = product.stock or 0
-        product.stock = max(0, current_stock - quantity)
-
-        # Log stock movement (Apply Phase)
-        log_stock_movement(
-            product_id=product.id,
-            quantity=quantity,
-            change_type='out',
-            reason=f'Sale Edit Apply #{sale.invoice_no}',
-            user_id=current_user.id if current_user.is_authenticated else None
-        )
-
-        # Create new SaleItem
-        sale_item = SaleItem(
-            sale_id=sale.id,
-            product_id=product.id,
-            quantity=quantity,
-            price=price,
-            subtotal=price * quantity,
-        )
-        db.session.add(sale_item)
-
-    # Calculate New Total
-    sale.recompute_totals()
-    new_total = Decimal(str(sale.total_amount or 0))
-
-    # If payment is 'Credit', ADD new total_amount to Customer.credit_balance
-    if payment_method == "credit" and sale.customer_id:
-        new_customer = db.session.get(Customer, sale.customer_id)
-        if new_customer:
-            current_balance = Decimal(str(new_customer.credit_balance or 0))
-            new_customer.credit_balance = current_balance + new_total
-
-    # Commit: Save changes
-    db.session.commit()
-    
-    # Log sale edit
-    changes = []
-    if old_payment_method != payment_method:
-        changes.append(f"Payment: {old_payment_method} → {payment_method}")
-    if old_total != new_total:
-        changes.append(f"Total: {old_total} → {new_total}")
-    if old_customer_id != customer_id:
-        changes.append(f"Customer changed")
-    
-    change_details = ", ".join(changes) if changes else "Items updated"
-    log_activity('SALE_EDIT', f'Edited sale {sale.invoice_no} (ID: {sale_id}): {change_details}')
-
-    return jsonify(
-        {
-            "status": "success",
+        return jsonify({
+            "success": True,
+            "message": "Sale updated successfully!",
             "sale_id": sale.id,
             "total": float(new_total),
-        }
-    )
+        }), 200
+
+    except Exception as e:
+        # Rollback on error
+        db.session.rollback()
+        
+        # Print error to terminal for debugging
+        import traceback
+        print(f"\n{'='*60}")
+        print(f"ERROR in update_sale_full (Sale ID: {sale_id}):")
+        print(f"{'='*60}")
+        traceback.print_exc()
+        print(f"{'='*60}\n")
+        
+        # Return error response
+        return jsonify({
+            "success": False,
+            "message": f"Error updating sale: {str(e)}"
+        }), 500
 
 
 @reports_bp.route("/sale/<int:sale_id>/delete", methods=["POST"])

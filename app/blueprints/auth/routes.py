@@ -57,26 +57,53 @@ def register():
             flash("User already exists.", "danger")
             return render_template("auth/register.html")
 
-        # Get or create Admin role for the first user
-        admin_role = Role.query.filter_by(name='Admin').first()
-        if not admin_role:
-            # If Admin role doesn't exist, create it with all permissions
-            from app.utils import ALL_PERMISSIONS
-            admin_role = Role(
-                name='Admin',
-                permissions=','.join(ALL_PERMISSIONS)
-            )
-            db.session.add(admin_role)
-            db.session.flush()  # Flush to get the ID
+        # First Run Logic: Check if this is the first user
+        is_first_user = User.query.count() == 0
         
-        username = email.split("@")[0] if "@" in email else email
-        user = User(email=email, username=username, role_id=admin_role.id)
-        user.set_password(password)
-        db.session.add(user)
-        db.session.commit()
+        if is_first_user:
+            # First user automatically becomes Admin
+            admin_role = Role.query.filter_by(name='Admin').first()
+            if not admin_role:
+                # If Admin role doesn't exist, create it with all permissions
+                from app.utils import ALL_PERMISSIONS
+                admin_role = Role(
+                    name='Admin',
+                    permissions=','.join(ALL_PERMISSIONS)
+                )
+                db.session.add(admin_role)
+                db.session.flush()  # Flush to get the ID
+            
+            username = email.split("@")[0] if "@" in email else email
+            user = User(email=email, username=username, role_id=admin_role.id)
+            user.set_password(password)
+            db.session.add(user)
+            db.session.commit()
+            
+            log_activity('USER_CREATE', f'First user (Admin) created: {user.username} ({user.email})')
+            flash("Admin account created successfully. Please log in.", "success")
+        else:
+            # Subsequent users get Cashier role (if registration is allowed)
+            cashier_role = Role.query.filter_by(name='Cashier').first()
+            if not cashier_role:
+                # Create Cashier role with basic permissions
+                from app.utils import ALL_PERMISSIONS
+                basic_permissions = ['pos_access', 'sales_view', 'dashboard_view']
+                cashier_role = Role(
+                    name='Cashier',
+                    permissions=','.join(basic_permissions)
+                )
+                db.session.add(cashier_role)
+                db.session.flush()
+            
+            username = email.split("@")[0] if "@" in email else email
+            user = User(email=email, username=username, role_id=cashier_role.id)
+            user.set_password(password)
+            db.session.add(user)
+            db.session.commit()
+            
+            log_activity('USER_CREATE', f'User (Cashier) created: {user.username} ({user.email})')
+            flash("Account created successfully. Please log in.", "success")
         
-        log_activity('USER_CREATE', f'First user (Admin) created: {user.username} ({user.email})')
-        flash("Admin account created successfully. Please log in.", "success")
         return redirect(url_for("auth.login"))
     
     return render_template("auth/register.html")

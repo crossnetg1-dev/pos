@@ -3,65 +3,92 @@
 {% block title %}POS | Cid-POS{% endblock %}
 
 {% block content %}
-<div class="container-fluid px-0">
+<div class="container-fluid px-3 py-3" style="background-color: #f8f9fa; min-height: 100vh;">
   <div class="row g-3">
-    <!-- Products -->
-    <div class="col-lg-8">
-      <div class="card border-0 shadow-sm h-100">
-        <div class="card-body d-flex flex-column">
+    <!-- Left Column: Products (8 cols) -->
+    <div class="col-md-8">
+      <!-- Search & Categories -->
+      <div class="card border-0 shadow-sm mb-3">
+        <div class="card-body">
           <div class="mb-3">
             <div class="input-group">
               <span class="input-group-text bg-white"><i class="fa fa-search"></i></span>
-              <input type="text" id="productSearch" class="form-control" placeholder="Search by name or barcode">
+              <input type="text" id="productSearch" class="form-control" placeholder="Search products by name or barcode...">
             </div>
           </div>
-          <div class="overflow-auto" style="max-height: 70vh;">
-            <div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-3" id="productGrid">
-              {% for product in products %}
-              <div class="col product-card" data-name="{{ product.name | lower }}" data-barcode="{{ product.barcode | lower }}">
-                <div class="card h-100 border-0 shadow-sm">
-                  <img src="{% if product.image_url %}{{ product.image_url }}{% elif product.image_file %}{{ url_for('static', filename='uploads/' + product.image_file) }}{% else %}https://via.placeholder.com/300x180?text=Product{% endif %}" 
-                       class="card-img-top" alt="{{ product.name }}" style="height: 180px; object-fit: cover;">
-                  <div class="card-body">
-                    <h6 class="card-title mb-1">{{ product.name }}</h6>
-                    <div class="text-muted small mb-2">Barcode: {{ product.barcode }}</div>
-                    <div class="d-flex justify-content-between align-items-center">
-                      <span class="fw-bold">
-                        {{ '{:,.0f} Ks'.format(product.price or 0) }}
-                        {% if product.unit %}/ {{ product.unit.short_name }}{% endif %}
-                      </span>
-                      <small class="text-muted">Stock: {{ product.stock }}</small>
-                    </div>
-                  </div>
-                  <div class="card-footer bg-white border-0">
-                    <button class="btn btn-sm btn-primary w-100 add-to-cart"
-                            data-id="{{ product.id }}"
-                            data-name="{{ product.name }}"
-                            data-price="{{ product.price }}"
-                            data-stock="{{ product.stock }}"
-                            data-unit-short="{{ product.unit.short_name if product.unit else '' }}">
-                      <i class="fa fa-cart-plus me-1"></i>Add
-                    </button>
-                  </div>
-                </div>
-              </div>
-              {% endfor %}
-            </div>
+          <div class="d-flex flex-wrap gap-2">
+            <button class="btn btn-outline-secondary btn-sm pos-category-btn active" data-category="">All</button>
+            {% for category in categories %}
+            <button class="btn btn-outline-secondary btn-sm pos-category-btn" data-category="{{ category.id }}">
+              {{ category.name }}
+            </button>
+            {% endfor %}
           </div>
         </div>
       </div>
+
+      <!-- Products Grid -->
+      <div class="row row-cols-3 row-cols-lg-4 g-3" id="productGrid">
+        {% for product in products %}
+        <div class="col pos-product-card" 
+             data-name="{{ product.name | lower }}" 
+             data-barcode="{{ product.barcode | lower }}"
+             data-category="{{ product.category_id or '' }}"
+             data-id="{{ product.id }}"
+             data-name-attr="{{ product.name }}"
+             data-price="{{ product.price }}"
+             data-stock="{{ product.stock }}"
+             data-unit-short="{{ product.unit.short_name if product.unit else '' }}">
+          <div class="card h-100 pos-product-card-inner" style="border: 1px solid #e2e8f0; border-radius: 8px; cursor: pointer; transition: all 0.2s ease;">
+            <div style="height: 140px; width: 100%; overflow: hidden; background-color: #f8f9fa; display: flex; align-items: center; justify-content: center;">
+              <img src="{% if product.image_url %}{{ product.image_url }}{% elif product.image_file %}{{ url_for('static', filename='uploads/' + product.image_file) }}{% else %}https://via.placeholder.com/200x140?text=Product{% endif %}" 
+                   alt="{{ product.name }}" 
+                   style="max-width: 100%; max-height: 100%; object-fit: contain;">
+            </div>
+            <div class="card-body" style="padding: 10px;">
+              <h6 class="card-title mb-1" style="font-size: 14px; font-weight: 600; margin-bottom: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ product.name }}</h6>
+              <div class="d-flex justify-content-between align-items-center">
+                <span class="fw-bold" style="color: #4299e1; font-size: 14px;">{{ '{:,.0f}'.format(product.price or 0) }} Ks</span>
+                {% if product.stock > 0 %}
+                <small class="badge bg-success" style="font-size: 11px;">Stock: {{ product.stock }}</small>
+                {% else %}
+                <small class="badge bg-danger" style="font-size: 11px;">Out of Stock</small>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
     </div>
 
-    <!-- Cart -->
-    <div class="col-lg-4">
-      <div class="card border-0 shadow-sm h-100">
-        <div class="card-header bg-white d-flex justify-content-between align-items-center">
-          <h6 class="mb-0">Cart</h6>
-          <span class="badge bg-secondary" id="cartCount">0</span>
+    <!-- Right Column: Cart Panel (4 cols) -->
+    <div class="col-md-4">
+      <div class="card border-0 shadow-sm" style="height: calc(100vh - 80px); display: flex; flex-direction: column; background-color: #ffffff;">
+        <div class="card-header bg-white border-bottom" style="padding: 1rem;">
+          <h5 class="mb-0">Current Order</h5>
         </div>
-        <div class="card-body d-flex flex-column" style="height: 70vh;">
-          <div class="mb-2">
-            <label class="form-label small fw-semibold">Select Customer</label>
+        <div class="card-body p-0" style="flex: 1; overflow-y: auto;">
+          <table class="table table-sm mb-0" id="cartTable" style="border-collapse: collapse;">
+            <thead>
+              <tr style="background-color: #f8f9fa;">
+                <th style="padding: 0.75rem; font-size: 12px; font-weight: 600; border-bottom: 1px solid #e2e8f0;">Item</th>
+                <th style="padding: 0.75rem; font-size: 12px; font-weight: 600; text-align: center; border-bottom: 1px solid #e2e8f0; width: 100px;">Qty</th>
+                <th style="padding: 0.75rem; font-size: 12px; font-weight: 600; text-align: right; border-bottom: 1px solid #e2e8f0; width: 80px;">Total</th>
+                <th style="padding: 0.75rem; font-size: 12px; font-weight: 600; text-align: center; border-bottom: 1px solid #e2e8f0; width: 40px;"></th>
+              </tr>
+            </thead>
+            <tbody id="cartTableBody">
+              <tr>
+                <td colspan="4" class="text-center text-muted py-4" style="font-size: 14px;">Cart is empty</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="card-footer border-top" style="padding: 1rem;">
+          <!-- Customer & Payment -->
+          <div class="mb-3">
+            <label class="form-label small fw-semibold mb-1">Customer</label>
             <select class="form-select form-select-sm" id="customerSelect">
               <option value="">Walk-in Customer</option>
               {% for c in customers %}
@@ -69,56 +96,44 @@
               {% endfor %}
             </select>
           </div>
-          <div class="mb-2">
-            <label class="form-label small fw-semibold">Payment Method</label>
+          <div class="mb-3">
+            <label class="form-label small fw-semibold mb-1">Payment Method</label>
             <select class="form-select form-select-sm" id="paymentMethodSelect">
               <option value="cash">💵 Cash</option>
               <option value="kpay">📱 KPay</option>
               <option value="wavepay">🟨 WavePay</option>
-              <option value="credit">📝 Credit (Debt)</option>
+              <option value="credit">📝 Credit</option>
             </select>
           </div>
-          <div class="table-responsive flex-grow-1">
-            <table class="table table-sm table-hover align-middle" id="cartTable">
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th class="text-center" style="width:80px;">Qty</th>
-                  <th class="text-end" style="width:90px;">Price</th>
-                  <th class="text-end" style="width:60px;">Remove</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr class="text-center text-muted" id="emptyCartRow">
-                  <td colspan="4">Cart is empty</td>
-                </tr>
-              </tbody>
-            </table>
+          <div class="mb-2">
+            <label class="form-label small fw-semibold mb-1">Discount (Ks)</label>
+            <input type="number" class="form-control form-control-sm" id="discountInput" value="0" min="0" step="0.01" placeholder="0">
           </div>
-          <div class="pt-3 border-top">
-            <div class="d-flex justify-content-between">
-              <span>Subtotal</span>
-              <span id="subtotalLabel">0 Ks</span>
+          
+          <!-- Totals -->
+          <div class="border-top pt-2 mb-3" style="border-color: #e2e8f0 !important;">
+            <div class="d-flex justify-content-between mb-1">
+              <span class="small">Subtotal</span>
+              <span class="small" id="subtotalLabel">0 Ks</span>
             </div>
-            <div class="d-flex justify-content-between">
-              <span>Tax (0%)</span>
-              <span id="taxLabel">0 Ks</span>
+            <div class="d-flex justify-content-between mb-1">
+              <span class="small">Tax</span>
+              <span class="small" id="taxLabel">0 Ks</span>
             </div>
-            <div class="mb-2">
-              <label class="form-label small fw-semibold">Discount (Ks)</label>
-              <input type="number" class="form-control form-control-sm" id="discountInput" 
-                     value="0" min="0" step="0.01" placeholder="0">
+            <div class="d-flex justify-content-between mb-1">
+              <span class="small">Discount</span>
+              <span class="small text-danger" id="discountLabel">0 Ks</span>
             </div>
-            <div class="d-flex justify-content-between">
-              <span>Discount</span>
-              <span id="discountLabel" class="text-danger">0 Ks</span>
+            <div class="d-flex justify-content-between mt-2 pt-2 border-top" style="border-color: #e2e8f0 !important;">
+              <span class="fw-bold">Grand Total</span>
+              <span class="fw-bold fs-5" id="totalLabel" style="color: #4299e1;">0 Ks</span>
             </div>
-            <div class="d-flex justify-content-between fw-bold fs-5 mt-2">
-              <span>Grand Total</span>
-              <span id="totalLabel">0 Ks</span>
-            </div>
-            <button class="btn btn-success w-100 mt-3" id="checkoutBtn">
-              <i class="fa fa-cash-register me-1"></i>Checkout
+          </div>
+
+          <!-- Action Buttons -->
+          <div class="d-grid">
+            <button class="btn btn-success" id="checkoutBtn">
+              <i class="fa fa-cash-register me-1"></i>Payment
             </button>
           </div>
         </div>
@@ -201,6 +216,9 @@
 {% block scripts %}
 {{ super() }}
 <script>
+  // Remove fullscreen class if it exists
+  document.body.classList.remove('pos-fullscreen');
+  
   const cart = {};
   const formatKs = (value) => `${Number(value || 0).toLocaleString()} Ks`;
 
@@ -211,7 +229,6 @@
     const discountInput = document.getElementById('discountInput');
     let discount = parseFloat(discountInput.value || 0);
     
-    // Ensure discount doesn't exceed subtotal
     if (discount > subtotal) {
       discount = subtotal;
       discountInput.value = subtotal;
@@ -232,68 +249,160 @@
   }
 
   function renderCart() {
-    const tbody = document.querySelector('#cartTable tbody');
-    tbody.innerHTML = '';
+    const tbody = document.getElementById('cartTableBody');
     const items = Object.values(cart);
+    
     if (!items.length) {
-      tbody.innerHTML = '<tr class="text-center text-muted"><td colspan="4">Cart is empty</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-4" style="font-size: 14px;">Cart is empty</td></tr>';
     } else {
-      items.forEach(item => {
-        const unitText = item.unit_short ? ` ${item.unit_short}` : '';
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td>${item.name}</td>
-          <td class="text-center">
-            <input type="number" min="1" class="form-control form-control-sm qty-input" data-id="${item.id}" value="${item.qty}">
-            <small class="text-muted">${item.qty}${unitText}</small>
-          </td>
-          <td class="text-end">${formatKs(item.price * item.qty)}</td>
-          <td class="text-end">
-            <button class="btn btn-sm btn-outline-danger remove-item" data-id="${item.id}">
-              <i class="fa fa-times"></i>
-            </button>
-          </td>
+      tbody.innerHTML = items.map(item => {
+        const maxStock = item.stock || 0;
+        return `
+          <tr style="border-bottom: 1px dashed #ccc;">
+            <td style="padding: 0.75rem; font-size: 13px;">${item.name}</td>
+            <td style="padding: 0.75rem; text-align: center;">
+              <div class="d-flex align-items-center justify-content-center gap-1">
+                <button class="btn btn-sm btn-outline-secondary pos-qty-decrease" data-id="${item.id}" style="width: 28px; height: 28px; padding: 0; line-height: 1;">-</button>
+                <input type="number" min="1" max="${maxStock}" class="form-control form-control-sm pos-qty-input" 
+                       data-id="${item.id}" 
+                       data-stock="${maxStock}"
+                       value="${item.qty}" 
+                       style="width: 50px; text-align: center; padding: 0.25rem;">
+                <button class="btn btn-sm btn-outline-secondary pos-qty-increase" data-id="${item.id}" style="width: 28px; height: 28px; padding: 0; line-height: 1;">+</button>
+              </div>
+            </td>
+            <td style="padding: 0.75rem; text-align: right; font-weight: 600; font-size: 13px;">${formatKs(item.price * item.qty)}</td>
+            <td style="padding: 0.75rem; text-align: center;">
+              <button class="btn btn-sm btn-outline-danger pos-cart-remove" data-id="${item.id}" style="width: 28px; height: 28px; padding: 0; line-height: 1;">
+                <i class="fa fa-times" style="font-size: 12px;"></i>
+              </button>
+            </td>
+          </tr>
         `;
-        tbody.appendChild(tr);
-      });
+      }).join('');
     }
-    document.getElementById('cartCount').textContent = items.reduce((a,b)=>a+b.qty,0);
     calculateTotal();
   }
 
   function addToCart(product) {
+    const productCard = document.querySelector(`.pos-product-card[data-id="${product.id}"]`);
+    const currentStock = productCard ? parseInt(productCard.dataset.stock || 0) : (product.stock || 0);
+    
     const existing = cart[product.id];
+    const newQty = existing ? existing.qty + 1 : 1;
+    
+    if (newQty > currentStock) {
+      Toast.fire({
+        icon: 'error',
+        title: 'Insufficient Stock!',
+        text: `Only ${currentStock} available for ${product.name}`
+      });
+      return;
+    }
+    
     if (existing) {
       existing.qty += 1;
+      existing.stock = currentStock;
     } else {
-      cart[product.id] = { ...product, qty: 1, unit_short: product.unit_short || '' };
+      cart[product.id] = { 
+        ...product, 
+        qty: 1, 
+        unit_short: product.unit_short || '',
+        stock: currentStock
+      };
     }
+    
+    Toast.fire({
+      icon: 'success',
+      title: 'Added',
+      text: `${product.name} +1`,
+      timer: 1500
+    });
+    
     renderCart();
   }
 
+  // Product card click
   document.addEventListener('click', (e) => {
-    if (e.target.closest('.add-to-cart')) {
-      const btn = e.target.closest('.add-to-cart');
+    const productCard = e.target.closest('.pos-product-card');
+    if (productCard) {
       const product = {
-        id: parseInt(btn.dataset.id),
-        name: btn.dataset.name,
-        price: parseFloat(btn.dataset.price || 0),
-        unit_short: btn.dataset.unitShort || ''
+        id: parseInt(productCard.dataset.id),
+        name: productCard.dataset.nameAttr,
+        price: parseFloat(productCard.dataset.price || 0),
+        stock: parseInt(productCard.dataset.stock || 0),
+        unit_short: productCard.dataset.unitShort || ''
       };
       addToCart(product);
     }
-    if (e.target.closest('.remove-item')) {
-      const id = parseInt(e.target.closest('.remove-item').dataset.id);
+    
+    // Quantity controls
+    if (e.target.closest('.pos-qty-decrease')) {
+      const id = parseInt(e.target.closest('.pos-qty-decrease').dataset.id);
+      if (cart[id] && cart[id].qty > 1) {
+        cart[id].qty -= 1;
+        renderCart();
+      }
+    }
+    if (e.target.closest('.pos-qty-increase')) {
+      const id = parseInt(e.target.closest('.pos-qty-increase').dataset.id);
+      if (cart[id]) {
+        const qtyInput = e.target.closest('.pos-qty-increase').closest('tr')?.querySelector('.pos-qty-input');
+        const maxStock = qtyInput ? parseInt(qtyInput.dataset.stock || 0) : (cart[id].stock || 0);
+        if (cart[id].qty < maxStock) {
+          cart[id].qty += 1;
+          renderCart();
+        } else {
+          Toast.fire({
+            icon: 'error',
+            title: 'Insufficient Stock!',
+            text: `Only ${maxStock} available`
+          });
+        }
+      }
+    }
+    
+    // Remove item
+    if (e.target.closest('.pos-cart-remove')) {
+      const id = parseInt(e.target.closest('.pos-cart-remove').dataset.id);
       delete cart[id];
       renderCart();
+    }
+    
+    // Category filter
+    if (e.target.closest('.pos-category-btn')) {
+      const btn = e.target.closest('.pos-category-btn');
+      document.querySelectorAll('.pos-category-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const categoryId = btn.dataset.category;
+      
+      document.querySelectorAll('.pos-product-card').forEach(card => {
+        const cardCategory = card.dataset.category || '';
+        if (!categoryId || cardCategory === categoryId) {
+          card.style.display = '';
+        } else {
+          card.style.display = 'none';
+        }
+      });
     }
   });
 
   document.addEventListener('input', (e) => {
-    if (e.target.classList.contains('qty-input')) {
+    if (e.target.classList.contains('pos-qty-input')) {
       const id = parseInt(e.target.dataset.id);
-      const qty = Math.max(1, parseInt(e.target.value || 1));
+      const maxStock = parseInt(e.target.dataset.stock || 0);
+      let qty = parseInt(e.target.value || 1);
+      
       if (cart[id]) {
+        if (qty > maxStock) {
+          qty = maxStock;
+          Toast.fire({
+            icon: 'warning',
+            title: 'Quantity Adjusted',
+            text: `Maximum available stock is ${maxStock}. Quantity adjusted to ${maxStock}.`
+          });
+        }
+        qty = Math.max(1, qty);
         cart[id].qty = qty;
         renderCart();
       }
@@ -306,14 +415,19 @@
   // Search filter
   document.getElementById('productSearch').addEventListener('input', (e) => {
     const term = e.target.value.toLowerCase();
-    document.querySelectorAll('.product-card').forEach(card => {
+    const activeCategory = document.querySelector('.pos-category-btn.active')?.dataset.category || '';
+    
+    document.querySelectorAll('.pos-product-card').forEach(card => {
       const name = card.dataset.name;
       const barcode = card.dataset.barcode;
-      const match = name.includes(term) || barcode.includes(term);
+      const category = card.dataset.category || '';
+      const match = (name.includes(term) || barcode.includes(term)) && 
+                    (!activeCategory || category === activeCategory);
       card.style.display = match ? '' : 'none';
     });
   });
 
+  // Checkout
   document.getElementById('checkoutBtn').addEventListener('click', async () => {
     const items = Object.values(cart);
     if (!items.length) {
@@ -339,14 +453,13 @@
       customer_id: customerId ? parseInt(customerId) : null
     };
     
-    // TOAST LOADING (No center modal)
     const loadingToast = Toast.fire({
       icon: 'info',
       title: 'Processing Sale...',
       didOpen: () => {
-        Swal.showLoading(); // Shows small spinner inside the toast
+        Swal.showLoading();
       },
-      timer: 0 // Disable auto-close while loading
+      timer: 0
     });
     
     try {
@@ -357,7 +470,6 @@
       });
       const data = await res.json();
       
-      // Close loading toast
       Swal.close();
       
       if (!res.ok) {
@@ -369,7 +481,6 @@
         return;
       }
       
-      // Show success toast
       Toast.fire({
         icon: 'success',
         title: 'Sale Complete!',
@@ -388,7 +499,7 @@
       });
     } catch (err) {
       console.error(err);
-      Swal.close(); // Close loading toast
+      Swal.close();
       Toast.fire({
         icon: 'error',
         title: 'Error processing checkout',
@@ -420,7 +531,6 @@
     }
     document.getElementById('rcptTotal').textContent = formatKs(parseFloat(total));
     
-    // Payment method display with icons
     const paymentLabels = {
       'cash': '💵 Cash',
       'kpay': '📱 KPay',
@@ -439,16 +549,13 @@
     const modal = new bootstrap.Modal(document.getElementById('receiptModal'));
     modal.show();
 
-    // Auto-print logic
     const autoPrint = {% if store.auto_print %}true{% else %}false{% endif %};
     if (autoPrint) {
-      // Wait a bit for modal to render, then trigger print
       setTimeout(() => {
         window.print();
       }, 500);
     }
 
-    // Clear cart after modal closes
     const receiptEl = document.getElementById('receiptModal');
     receiptEl.addEventListener('hidden.bs.modal', () => {
       Object.keys(cart).forEach(k => delete cart[k]);
@@ -464,13 +571,19 @@
 </script>
 
 <style>
-/* Receipt Logo Styling - Optimized for Thermal Printers */
+/* Product Card Hover Effect */
+.pos-product-card-inner:hover {
+  border-color: #4299e1 !important;
+  box-shadow: 0 2px 8px rgba(66, 153, 225, 0.2);
+}
+
+/* Receipt Logo Styling */
 .receipt-logo {
-  max-width: 60%;       /* Don't span full width, looks nicer */
-  max-height: 80px;     /* Limit height */
+  max-width: 60%;
+  max-height: 80px;
   display: block;
-  margin: 0 auto 10px;  /* Center align and add bottom space */
-  filter: grayscale(100%) contrast(120%); /* Convert to B&W and boost contrast for thermal paper */
+  margin: 0 auto 10px;
+  filter: grayscale(100%) contrast(120%);
 }
 
 @media print {
@@ -506,7 +619,6 @@
   #receipt small {
     font-size: {% if store.printer_paper_size == '58mm' %}9px{% elif store.printer_paper_size == '80mm' %}11px{% else %}13px{% endif %};
   }
-  /* Receipt Logo - Optimized for Thermal Printers */
   .receipt-logo {
     max-width: 60%;
     max-height: 80px;

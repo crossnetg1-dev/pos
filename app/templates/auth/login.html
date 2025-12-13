@@ -288,9 +288,12 @@
         </form>
         
         {% if is_first_run %}
-        <p class="auth-link">
-          <a href="{{ url_for('auth.register') }}">No account? Register (Setup Admin)</a>
-        </p>
+        <div class="text-center mt-3">
+          <a href="{{ url_for('auth.register') }}" class="btn btn-outline-primary btn-lg w-100">
+            <i class="fas fa-user-plus me-2"></i>Create Admin Account
+          </a>
+          <p class="text-muted small mt-2">First time setup - Create your admin account</p>
+        </div>
         {% endif %}
       </div>
     </div>
